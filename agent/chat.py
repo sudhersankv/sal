@@ -117,16 +117,23 @@ def last_why(chat_id: Any) -> list[str]:
 
 def waiting_items(chat_id: Any) -> list[dict]:
     """Latest action.status per action across this chat's logs that is still waiting on the owner."""
+    return [a for a in action_index(chat_id).values() if a.get("status") == "waiting_owner"]
+
+
+def action_index(chat_id: Any = "*") -> dict[str, dict]:
+    """action_id -> latest action.status data (+ chat_id, refs, ts) across chat logs. chat_id "*" = every chat."""
     latest: dict[str, dict] = {}
     for p in sorted((core.ROOT / "runs").glob(f"chat-{chat_id}-*/events.jsonl")):
+        cid = p.parent.name[len("chat-"):-len("-yyyymmdd")]
         for line in p.read_text(encoding="utf-8").splitlines():
             try:
                 ev = json.loads(line)
             except ValueError:
                 continue
             if ev.get("type") == "action.status" and (ev.get("data") or {}).get("action_id"):
-                latest[ev["data"]["action_id"]] = ev["data"]
-    return [a for a in latest.values() if a.get("status") == "waiting_owner"]
+                latest[ev["data"]["action_id"]] = {**ev["data"], "chat_id": cid, "refs": ev.get("refs") or {},
+                                                   "ts": ev.get("ts"), "run_id": ev.get("run_id")}
+    return latest
 
 
 def split_needs_owner(reply: str) -> tuple[str, str | None]:

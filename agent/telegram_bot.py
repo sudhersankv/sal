@@ -49,6 +49,15 @@ def owner_buttons(persona_url: str | None = None) -> list[list[dict]]:
     return rows
 
 
+WHY_ASK = "Why? Give me 2-3 short lines on your last call, each with where it came from."
+
+
+def has_why(chat_id: Any) -> bool:
+    from agent.chat import last_why
+
+    return bool(last_why(chat_id))
+
+
 def why_text(chat_id: Any) -> str:
     from agent.chat import last_why
 
@@ -145,8 +154,10 @@ class Bot:
             self.send(chat_id, waiting_text(chat_id))
             return
         if cmd == "/why" and not arg.strip():
-            self.send(chat_id, why_text(chat_id))
-            return
+            if has_why(chat_id):
+                self.send(chat_id, why_text(chat_id))
+                return
+            arg = "did you do that"
         text = COMMANDS.get(cmd, text) if cmd in COMMANDS else (f"Why {arg}?" if cmd == "/why" else text)
         threading.Thread(target=self.chat, args=(chat_id, text), daemon=True).start()
 
@@ -214,8 +225,11 @@ class Bot:
             chat_id = msg["chat"]["id"]
             if parts[1] == "w":  # Why?
                 self.call("answerCallbackQuery", callback_query_id=q["id"])
-                self.call("sendMessage", chat_id=chat_id, text=why_text(chat_id),
-                          reply_to_message_id=msg["message_id"])
+                if has_why(chat_id) or chat_id in self.busy:
+                    self.call("sendMessage", chat_id=chat_id, text=why_text(chat_id),
+                              reply_to_message_id=msg["message_id"])
+                else:  # no stored trace: let Sal explain from the chat memory
+                    threading.Thread(target=self.chat, args=(chat_id, WHY_ASK), daemon=True).start()
                 return
             yes = parts[1] == "1"
             self.call("answerCallbackQuery", callback_query_id=q["id"], text="Approved." if yes else "Declined.")
