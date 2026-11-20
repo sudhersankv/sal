@@ -384,7 +384,7 @@ export class ShopScene {
     g.fillText(s.title, 40, 62);
     if (s.gate) {
       g.fillStyle = "#22c550"; g.textAlign = "right";
-      g.fillText("● sal_vendor_routing_v2 ON", canvas.width - 40, 58);
+      g.fillText("● GATE ON", canvas.width - 40, 62);
       g.textAlign = "left";
     }
     g.strokeStyle = "#2c2d31"; g.lineWidth = 2; g.beginPath(); g.moveTo(40, 80); g.lineTo(canvas.width - 40, 80); g.stroke();
@@ -604,14 +604,14 @@ export class ShopScene {
         this.flipBoard(() => {
           this.boardState.mode = "scorecard";
           this.boardState.title = "VENDOR SCORECARD · 90 DAYS";
-          this.boardState.bars = per.map((p) => ({ k: p.vendor_id[0].toUpperCase() + p.vendor_id.slice(1), v: p.late_rate }));
+          this.boardState.bars = (Array.isArray(per) ? per : []).slice(0, 3).map((p) => { const id = String(p?.vendor_id ?? "vendor"); return { k: id[0].toUpperCase() + id.slice(1), v: Number(p?.late_rate ?? 0) }; });
         });
         break;
       }
       case "rule.proposed":
         this.flipBoard(() => {
           this.boardState.mode = "proposed";
-          this.boardState.title = `PROPOSED ${refs.rule_id ?? ""} · AWAITING OWNER`;
+          this.boardState.title = `PROPOSED · ${String(refs.rule_id ?? "").slice(0, 14)}`;
           this.boardState.lines = wrap(String(data.title ?? ev.summary.replace(/^Proposed:\s*/, "")), 22);
         });
         this.officeAlert();
@@ -620,8 +620,8 @@ export class ShopScene {
         this.officeCalm();
         this.flipBoard(() => {
           this.boardState.mode = "approved";
-          this.boardState.title = `NEW RULE ${refs.rule_id ?? ""} · APPROVED`;
-          this.boardState.lines = wrap(String(data.title ?? ev.summary.replace(/^Owner approved [^:]*:\s*/, "")), 22);
+          this.boardState.title = `APPROVED · ${String(refs.rule_id ?? "").slice(0, 14)}`;
+          this.boardState.lines = wrap(String(data.title ?? ev.summary.replace(/^Owner approved[^:]*:\s*/, "")), 22);
         });
         break;
       case "gate.enabled":

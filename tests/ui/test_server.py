@@ -11,6 +11,8 @@ from ui.server import app as app_mod
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app_mod, "RUNS", tmp_path)
     monkeypatch.setattr(app_mod, "_events", [])
+    monkeypatch.setattr(app_mod, "_seen", set())
+    monkeypatch.setattr(app_mod, "_logged", {})
     monkeypatch.setattr(app_mod, "SIM_URL", "http://127.0.0.1:9")  # nothing listens
     return TestClient(app_mod.app)
 
@@ -48,3 +50,12 @@ def test_replay_path_escape_blocked(client):
 def test_sim_proxy_tolerates_down(client):
     r = client.post("/sim/next", json={})
     assert r.status_code == 503 and r.json()["offline"]
+
+
+def test_no_duplicate_lines_when_producer_wrote_first(client, tmp_path):
+    (tmp_path / "t").mkdir()
+    (tmp_path / "t/events.jsonl").write_text(json.dumps(EV) + "\n", encoding="utf-8")
+    client.post("/events", json=EV)
+    client.post("/events", json=EV)
+    assert len((tmp_path / "t/events.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+    assert len(client.get("/events").json()) == 1
