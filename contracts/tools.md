@@ -44,3 +44,12 @@ All tools return JSON. All money in USD floats. All tools that represent a decis
 | `reconcile_statement` | `{vendor_id, lines[]}` | `{missing_core_credits:[{order_id, sku, due}], total_due, dispute_draft}` | `escalation` (dispute drafted, not sent) | SingleStore join vs `purchase_history` |
 
 **Model routing rule:** Sal's reasoning loop = Claude (Agent SDK, `SAL_MODEL`). Every other model call (extraction, matching, rerank, OCR, document parsing, short text sub-tasks like reason-chip wording) goes through **Superlinked SIE** via `tools/sie.py` (one shared client; caches responses in `runs/cache/sie/` for demo safety). No other model provider in tools.
+
+## Additions (lead, 2026-11-20 13:20, D-006/D-007)
+
+| Tool | Input | Output | Auto-emits | Backing |
+|---|---|---|---|---|
+| `verify_owner` | `{reason, order_total, ro_id?}` | `{inquiry_id, status: approved\|declined\|pending, verified_name, hosted_url, method: persona\|simulated}` | `identity.verified` (sources=Persona inquiry id) | Persona sandbox: create Inquiry from `PERSONA_TEMPLATE_ID`, poll status; fallback: simulated approve in UI |
+| `search_shop_data` | `{query, stream?: bookings\|price_sheets}` | `{records:[{stream, id, fields}], source: airbyte\|csv}` | `context.retrieved` (sources=Airbyte) | Airbyte context layer (MCP / REST search over synced shop sheet); fallback: local CSVs in `seed/shop_sheets/` |
+
+**Policy guard change (R1):** an order over `SPEND_CAP` requires an owner `approval_id` **whose identity was verified** (`verify_owner` status approved). The guard rejects otherwise → `escalation`.

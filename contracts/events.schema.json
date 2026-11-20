@@ -53,6 +53,7 @@
         "stock.low",
         "restock.planned",
         "statement.parsed",
+        "identity.verified",
         "escalation",
         "scorecard.built",
         "rule.proposed",
@@ -103,7 +104,9 @@
               "Statsig",
               "Amplitude",
               "Vendor",
-              "Shop"
+              "Shop",
+              "Persona",
+              "Airbyte"
             ]
           },
           "ref": {
