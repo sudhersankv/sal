@@ -247,7 +247,7 @@ def search_vendor(vendor_id: str, oem_part_no: str) -> dict:
 
 # ------------------------------------------------------------------------------------------ matching
 MATCH_VECTOR_SQL = (
-    "SELECT vendor_id, sku, brand, description, DOT_PRODUCT(embedding, %s :> VECTOR(1024)) AS score "
+    "SELECT vendor_id, sku, brand, description, DOT_PRODUCT(embedding, %s :> VECTOR(2560)) AS score "
     "FROM vendor_catalog WHERE oem_part_no = %s OR description LIKE %s ORDER BY score DESC LIMIT 10")
 
 

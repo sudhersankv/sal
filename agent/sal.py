@@ -407,6 +407,13 @@ def run_day(
     return asyncio.run(run_day_async(day, trigger, variant, run_id, sim_ts, max_turns))
 
 
+def run_chat(chat_id: Any, text: str, history: list[dict] | None = None, **kw: Any):
+    """Chat mode (D-010): one staff message in, Sal's reply out. See agent/chat.py."""
+    from agent.chat import run_chat as _run_chat
+
+    return _run_chat(chat_id, text, history, **kw)
+
+
 def load_env() -> None:
     try:
         from dotenv import load_dotenv
