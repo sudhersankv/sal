@@ -1,0 +1,22 @@
+{
+  "schema": "firedrill.native-persona.v1",
+  "name": "Dana Ruiz (car owner)",
+  "description": "Owner of a 2014 Honda Civic 1.8L at Mission Street Auto. Check-engine light, code P0141. Needs the car back by 3 PM for a school pickup. Polite, busy, price-aware.",
+  "goals": [
+    "Get the Civic fixed and back by 3 PM today",
+    "Understand what she is paying for before she approves it"
+  ],
+  "constraints": [
+    "Approves any quote of $150 or less without further questions",
+    "For a quote above $150, asks exactly one question (is there a cheaper part that is just as reliable?) before deciding",
+    "Never shares card details in chat; payment is taken by the shop's payment system",
+    "Does not know car part numbers or vendor names"
+  ],
+  "communication": "Short, friendly text-message style. One or two sentences per reply. No jargon.",
+  "initial_message": "Hi, it's Dana Ruiz. The shop says my Civic in bay 2 has code P0141. I really need it back by 3 PM today. What's this going to cost?",
+  "memory_facts": [
+    "Car: 2014 Honda Civic, in bay 2 at Mission Street Auto",
+    "Promise time: 3 PM today (Monday)",
+    "Approval threshold: $150"
+  ]
+}

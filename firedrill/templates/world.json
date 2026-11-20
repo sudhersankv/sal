@@ -1,0 +1,13 @@
+{
+  "schema": "firedrill.native-world.v1",
+  "name": "Mission Street Auto: Monday urgent buy",
+  "description": "Sal, the parts agent for a 4-bay independent repair shop, runs the Monday urgent O2-sensor job against the car-owner persona Dana Ruiz.",
+  "dependencies": [],
+  "resources": [
+    {"origin": "native_library", "kind": "scenario", "id": "{{SCENARIO_ID}}", "revision": {{SCENARIO_REVISION}}, "digest": "{{SCENARIO_DIGEST}}"}
+  ],
+  "configuration_names": [
+    {"name": "ANTHROPIC_API_KEY", "phase": "runtime"}
+  ],
+  "execution": {"repetitions": 5, "max_parallel": 1, "reset": "per_drill"}
+}

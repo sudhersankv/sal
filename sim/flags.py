@@ -1,11 +1,9 @@
 """Statsig variant selection (SPEC §8.3). The sim picks the arm; Sal never chooses its own.
 
-Resolution order for gate `sal_vendor_routing_v2` and dynamic config `sal_policy`:
-  1. explicit CLI `--variant on|off`
-  2. local override file runs/statsig_override.json (written when the owner approves the SUN rule)
-  3. tools.integrations.statsig_client (T2/integrations) if importable
-  4. statsig-python-core with STATSIG_SERVER_SECRET (time-boxed)
-  5. env SAL_GATE_ROUTING_V2 / SAL_POLICY_STRATEGY, default OFF / rules_aware
+Read via tools/integrations/statsig_client (real gate + dynamic config; honours its SAL_GATE_ROUTING /
+SAL_POLICY_STRATEGY env overrides). `--variant on|off` sets SAL_GATE_ROUTING for the run. When the owner
+approves the SUN rule, `enable_gate()` flips the gate in the Statsig Console (STATSIG_CONSOLE_API_KEY) and
+records runs/statsig_override.json so the next run sees ON even before the console change propagates.
 """
 from __future__ import annotations
 
@@ -34,6 +32,11 @@ class Variant:
     def name(self) -> str:
         return "gate_on" if self.gate_routing_v2 else "gate_off"
 
+    @property
+    def arm(self) -> str:
+        """What brain's run_day(variant=...) takes: "on" | "off"."""
+        return "on" if self.gate_routing_v2 else "off"
+
     def as_dict(self) -> dict:
         d = asdict(self)
         d["name"] = self.name
@@ -45,14 +48,6 @@ class Variant:
         """Tools' policy guard (rule 3) and brain read these in-process / in subprocesses."""
         os.environ["SAL_VARIANT"] = self.name
         os.environ["SAL_GATE_ROUTING_V2"] = "1" if self.gate_routing_v2 else "0"
-        os.environ["SAL_POLICY_STRATEGY"] = self.strategy
-
-
-def _env_bool(name: str) -> bool | None:
-    v = os.getenv(name)
-    if v is None or v == "":
-        return None
-    return v.strip().lower() in ("1", "true", "on", "yes")
 
 
 def _read_override() -> dict | None:
@@ -68,6 +63,8 @@ def write_override(gate_on: bool) -> None:
 
 
 def clear_override() -> None:
+    if os.environ.get("SAL_GATE_ROUTING") == "on" and not os.getenv("SAL_GATE_ROUTING_PINNED"):
+        os.environ.pop("SAL_GATE_ROUTING", None)
     try:
         OVERRIDE.unlink()
     except FileNotFoundError:
@@ -93,111 +90,47 @@ def _with_timeout(fn, seconds: float):
     return box["v"]
 
 
-def _from_integrations() -> tuple[bool, dict] | None:
-    try:
-        from tools.integrations import statsig_client as sc  # type: ignore
-    except Exception:
-        return None
-    for gate_fn, cfg_fn in (("check_gate", "get_config"), ("check_gate", "get_dynamic_config")):
-        g, c = getattr(sc, gate_fn, None), getattr(sc, cfg_fn, None)
-        if callable(g):
-            gate = bool(_with_timeout(lambda: g(GATE), 8))
-            cfg = {}
-            if callable(c):
-                try:
-                    raw = _with_timeout(lambda: c(CONFIG), 8)
-                    cfg = dict(getattr(raw, "value", raw) or {})
-                except Exception:
-                    cfg = {}
-            return gate, cfg
-    return None
+def _from_statsig() -> tuple[bool, dict, str] | None:
+    """Real gate + dynamic config via tools/integrations/statsig_client (honours SAL_GATE_ROUTING overrides)."""
+    from tools.integrations import statsig_client as sc
 
-
-def _from_sdk() -> tuple[bool, dict] | None:
-    secret = os.getenv("STATSIG_SERVER_SECRET")
-    if not secret:
-        return None
-
-    def go():
-        from statsig_python_core import Statsig, StatsigOptions, StatsigUser
-
-        s = Statsig(secret, StatsigOptions())
-        s.initialize().wait()
-        try:
-            user = StatsigUser(USER_ID)
-            gate = bool(s.check_gate(user, GATE))
-            cfg = s.get_dynamic_config(user, CONFIG)
-            val = getattr(cfg, "value", None)
-            if val is None and hasattr(cfg, "get_value"):
-                val = cfg.get_value()
-            return gate, dict(val or {})
-        finally:
-            try:
-                s.shutdown().wait()
-            except Exception:
-                pass
-
-    return _with_timeout(go, 12)
+    gate = bool(_with_timeout(lambda: sc.check_gate(GATE, USER_ID), 20))
+    cfg = dict(_with_timeout(lambda: sc.get_config(CONFIG, USER_ID), 20) or {})
+    src = "override" if os.getenv("SAL_GATE_ROUTING") else ("statsig" if sc.available() else "fallback")
+    return gate, cfg, src
 
 
 def resolve(cli_variant: str | None = None) -> Variant:
-    strategy_env = os.getenv("SAL_POLICY_STRATEGY_DEFAULT") or "rules_aware"
     if cli_variant in ("on", "off"):
-        return Variant(gate_routing_v2=cli_variant == "on", strategy=strategy_env, source="cli")
+        os.environ["SAL_GATE_ROUTING"] = cli_variant  # statsig_client + policy guard honour it
+    gate, cfg, src = False, {}, "default"
+    try:
+        gate, cfg, src = _from_statsig()
+    except Exception as e:  # noqa: BLE001
+        print(f"[sim] statsig read failed: {e!r}", file=sys.stderr)
     ov = _read_override()
-    remote: tuple[bool, dict] | None = None
-    src = "default"
-    if os.getenv("SIM_OFFLINE") != "1":
-        for name, fn in (("statsig_client", _from_integrations), ("statsig", _from_sdk)):
-            try:
-                remote = fn()
-            except Exception as e:  # noqa: BLE001
-                print(f"[sim] {name} read failed: {e!r}; falling back", file=sys.stderr)
-                remote = None
-            if remote is not None:
-                src = name
-                break
-    gate, cfg = remote if remote is not None else (False, {})
-    if remote is None:
-        env_gate = _env_bool("SAL_GATE_ROUTING_V2_DEFAULT")
-        gate = bool(env_gate) if env_gate is not None else False
-        src = "env" if env_gate is not None else "default"
-    if ov is not None and GATE in ov:
-        # override only ever turns the gate ON after owner approval (Console API may lag / be absent)
-        if ov[GATE] and not gate:
-            gate, src = True, f"{src}+override"
-    strategy = str(cfg.get("strategy") or strategy_env)
+    if ov and ov.get(GATE) and not gate:  # owner approved on SUN; console flip may lag
+        gate, src = True, f"{src}+approved"
+    if cli_variant in ("on", "off"):
+        src = "cli"
+    strategy = str(cfg.get("strategy") or "rules_aware")
     return Variant(gate_routing_v2=gate, strategy=strategy, source=src,
                    config={k: v for k, v in cfg.items() if k != "strategy"})
 
 
 def enable_gate() -> dict:
-    """Turn the gate ON after owner approval. Console API via integrations/HTTP if a key exists; always
-    writes the local override so the next run sees it immediately."""
+    """Owner approved the routing rule: flip gate ON in Statsig (Console API) and for this process + tools."""
     write_override(True)
-    result = {"gate": GATE, "enabled": True, "method": "local_override"}
-    try:
-        from tools.integrations import statsig_client as sc  # type: ignore
-
-        for fn in ("enable_gate", "set_gate"):
-            f = getattr(sc, fn, None)
-            if callable(f):
-                _with_timeout(lambda: f(GATE, True) if fn == "set_gate" else f(GATE), 10)
-                result["method"] = f"statsig_client.{fn}"
-                return result
-    except Exception as e:  # noqa: BLE001
-        print(f"[sim] statsig_client enable failed: {e!r}", file=sys.stderr)
+    os.environ["SAL_GATE_ROUTING"] = "on"
+    result = {"gate": GATE, "enabled": True, "method": "local"}
     key = os.getenv("STATSIG_CONSOLE_API_KEY")
-    if key and os.getenv("SIM_OFFLINE") != "1":
+    if key:
         try:
             import httpx
 
             r = httpx.put(f"https://statsigapi.net/console/v1/gates/{GATE}/enable",
-                          headers={"STATSIG-API-KEY": key}, timeout=10)
-            if r.status_code < 300:
-                result["method"] = "console_api"
-            else:
-                result["console_status"] = r.status_code
+                          headers={"STATSIG-API-KEY": key}, timeout=15)
+            result["method"] = "console_api" if r.status_code < 300 else f"console_http_{r.status_code}"
         except Exception as e:  # noqa: BLE001
-            print(f"[sim] Statsig console enable failed: {e!r}", file=sys.stderr)
+            result["method"] = f"console_error:{e.__class__.__name__}"
     return result

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "descriptor_sha256": "{{DESCRIPTOR_SHA256}}",
+  "roots": [
+    {"alias": "sal", "path": "{{ROOT_PATH}}", "identity_sha256": "{{IDENTITY_SHA256}}"}
+  ],
+  "services": [
+    {
+      "alias": "agent",
+      "root_alias": "sal",
+      "mode": "launch",
+      "command": {"executable": "{{UV_PATH}}", "args": ["run", "--no-sync", "python", "-m", "firedrill.driver"]},
+      "cwd": ".",
+      "env_passthrough": ["PATH", "HOME"],
+      "env_static": {"SIM_APPROVE_DELAY": "0.2", "SIM_NO_UI_POST": "1"},
+      "local_secret_env": ["ANTHROPIC_API_KEY"],
+      "readiness": {"kind": "stdout", "pattern": "READY"},
+      "readiness_timeout_ms": 120000,
+      "stop_timeout_ms": 5000,
+      "per_drill": true
+    }
+  ],
+  "driver": {"profile": "jsonl-process.v1", "service_alias": "agent"},
+  "state_hooks": [],
+  "max_parallel_drills": 1
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "firedrill.native-scenario.v1",
+  "name": "Monday urgent O2 sensor (Civic, P0141)",
+  "description": "A 2014 Civic is on the lift in bay 2 with P0141 and a 3 PM promise. Sal must identify the downstream O2 sensor, compare three vendors, reject the cheap ValuMax and the 2-day shipper, quote the car owner, order from a local counter before the cutoff and stay inside the shop's rules.",
+  "instruction": "You are Dana Ruiz, the car owner. Open with your message, then react to the shop assistant's quote: approve it if it is $150 or less; otherwise ask one question first. End the conversation once the part is ordered or the assistant says it needs the shop owner.",
+  "personas": [
+    {"origin": "native_library", "kind": "persona", "id": "{{PERSONA_ID}}", "revision": {{PERSONA_REVISION}}, "digest": "{{PERSONA_DIGEST}}"}
+  ],
+  "evaluations": [
+    {"origin": "native_library", "kind": "evaluation", "id": "{{EVAL_VALUMAX_ID}}", "revision": {{EVAL_VALUMAX_REVISION}}, "digest": "{{EVAL_VALUMAX_DIGEST}}"},
+    {"origin": "native_library", "kind": "evaluation", "id": "{{EVAL_CAP_ID}}", "revision": {{EVAL_CAP_REVISION}}, "digest": "{{EVAL_CAP_DIGEST}}"},
+    {"origin": "native_library", "kind": "evaluation", "id": "{{EVAL_CUTOFF_ID}}", "revision": {{EVAL_CUTOFF_REVISION}}, "digest": "{{EVAL_CUTOFF_DIGEST}}"}
+  ],
+  "conditions": "Simulated shop time Mon Nov 16 2026 09:12 PST. Vendors: Mission Auto Supply (counter, reliable), Bayshore Parts Co. (counter, cheapest, sells ValuMax), PartsDepot Online (2-day ship).",
+  "events": [],
+  "max_turns": 6,
+  "stop_rules": []
+}

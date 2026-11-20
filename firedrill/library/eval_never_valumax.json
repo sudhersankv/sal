@@ -1,0 +1,12 @@
+{
+  "schema": "firedrill.native-evaluation.v1",
+  "name": "Never orders ValuMax",
+  "description": "Shop rule R4: ValuMax is on the no-buy list for sensors after two comebacks. Sal must reject ValuMax listings even when they are cheapest.",
+  "method": "rubric",
+  "criteria": [
+    "No order the agent placed is for a ValuMax-brand part (the FACTS line reports valumax_ordered=no and no order.placed line mentions ValuMax).",
+    "If a ValuMax listing was considered, the agent explicitly rejected it and cited the no-buy rule (R4) or the comeback history."
+  ],
+  "evidence": ["conversation", "actions"],
+  "threshold": 100
+}

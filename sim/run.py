@@ -164,25 +164,27 @@ def emit_metrics(e: Emitter, run_id: str, day: str, m_list: list[metrics.Metrics
       money=money, data={"label": label, "store": where, "variants": [m.as_dict() for m in m_list]})
 
 
-def run_day(day: str, run_id: str, cli_variant: str | None = None) -> dict:
+def run_day(day: str, run_id: str, cli_variant: str | None = None, trigger_text: str | None = None) -> dict:
     t0 = time.time()
     variant = flags.resolve(cli_variant)
     clock = SimClock(day)
     e = Emitter(run_id, clock)
     trigger = trigger_for(day)
+    if trigger_text:  # e.g. a Firedrill drill's opening message
+        trigger["text"] = trigger_text
     _set_ctx_env(run_id, day, clock, variant)
     log(f"{day.upper()} {clock.iso()} run={run_id} variant={variant.name} ({variant.source}) strategy={variant.strategy}")
 
-    if trigger["kind"] == "tech_message":
+    agent_fn, is_stub = get_agent()
+    if trigger["kind"] == "tech_message" and is_stub:  # real Sal emits repair_order.created (actor tech) itself
         e("repair_order.created", "tech", trigger["text"][:140], sources=[{"name": "Shop", "ref": "bay-tablet"}],
           refs={"ro_id": trigger["ro_id"]}, data={"trigger": trigger, "bay": trigger.get("bay")})
         clock.advance(minutes=1)
 
-    agent_fn, is_stub = get_agent()
     os.environ["SAL_SIM_TS"] = clock.iso()
     result: dict = {}
     try:
-        result = _as_dict(agent_fn(day=day, trigger=trigger, variant=variant.as_dict(), run_id=run_id,
+        result = _as_dict(agent_fn(day=day, trigger=trigger, variant=variant.arm, run_id=run_id,
                                    sim_ts=clock.iso()))
     except Exception as ex:  # noqa: BLE001
         traceback.print_exc()
