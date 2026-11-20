@@ -36,6 +36,8 @@ class ChatReply:
     actions: list[dict] = field(default_factory=list)  # final action.status per action
     orders: list[dict] = field(default_factory=list)  # {order_id, total, eta, vendor}
     tool_calls: list[str] = field(default_factory=list)
+    why: list[str] = field(default_factory=list)  # short reasons + sources behind this turn's decisions
+    persona_url: str | None = None  # owner verification link (over-cap)
     cost_usd: float | None = None
     error: str | None = None
 
@@ -64,12 +66,15 @@ def load_history(chat_id: Any, n: int = HISTORY_TURNS) -> list[dict]:
     return rows[-n:]
 
 
-def append_history(chat_id: Any, role: str, text: str, notes: str | None = None) -> None:
+def append_history(chat_id: Any, role: str, text: str, notes: str | None = None,
+                   why: list[str] | None = None) -> None:
     p = chat_dir() / f"{chat_id}.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     row = {"ts": datetime.now(PT).isoformat(timespec="seconds"), "role": role, "text": text}
     if notes:
         row["notes"] = notes
+    if why:
+        row["why"] = why
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
@@ -86,6 +91,42 @@ def render_prompt(history: list[dict], text: str, now: datetime) -> str:
         lines.append("")
     lines.append(f"New message: {text}")
     return "\n".join(lines)
+
+
+def clean_text(s: str) -> str:
+    """Telegram gets plain text: drop markdown emphasis/headers the model sometimes adds."""
+    s = s.replace("**", "").replace("__", "")
+    lines = [ln.lstrip("#").lstrip() if ln.lstrip().startswith("#") else ln for ln in s.splitlines()]
+    return chr(10).join(lines)
+
+
+def why_line(reason: str, sources: list | None) -> str:
+    names = []
+    for src in sources or []:
+        if isinstance(src, dict) and src.get("name"):
+            names.append(src["name"] + (f" {src['ref']}" if src.get("ref") else ""))
+    return " ".join(str(reason).split())[:200] + (f" (sources: {', '.join(names[:3])})" if names else "")
+
+
+def last_why(chat_id: Any) -> list[str]:
+    for row in reversed(load_history(chat_id, 200)):
+        if row.get("why"):
+            return row["why"]
+    return []
+
+
+def waiting_items(chat_id: Any) -> list[dict]:
+    """Latest action.status per action across this chat's logs that is still waiting on the owner."""
+    latest: dict[str, dict] = {}
+    for p in sorted((core.ROOT / "runs").glob(f"chat-{chat_id}-*/events.jsonl")):
+        for line in p.read_text(encoding="utf-8").splitlines():
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "action.status" and (ev.get("data") or {}).get("action_id"):
+                latest[ev["data"]["action_id"]] = ev["data"]
+    return [a for a in latest.values() if a.get("status") == "waiting_owner"]
 
 
 def split_needs_owner(reply: str) -> tuple[str, str | None]:
@@ -242,6 +283,7 @@ async def run_chat_async(chat_id: Any, text: str, history: list[dict] | None = N
     tracker.user_message(text)
     pending: dict[str, tuple[str, dict, float]] = {}
     notes: list[str] = []
+    why: list[str] = []
     last_text, escalations = "", []
     t_turn = time.monotonic()
     try:
@@ -269,6 +311,15 @@ async def run_chat_async(chat_id: Any, text: str, history: list[dict] | None = N
                     err, esc = core.result_flags(parsed, b.is_error)
                     if esc:
                         escalations.append(parsed["escalation"])
+                        e0 = parsed["escalation"] if isinstance(parsed["escalation"], dict) else {}
+                        why.append(why_line(e0.get("message") or e0.get("reason") or "Blocked by shop rules",
+                                            [{"name": "Senso", "ref": e0.get("rule_id")}] if e0.get("rule_id") else None))
+                    if name == "emit_event" and not err:
+                        ev = inp.get("event") if isinstance(inp.get("event"), dict) else inp
+                        if ev.get("type") in ("part.chosen", "part.rejected", "escalation") and ev.get("reason"):
+                            why.append(why_line(ev["reason"], ev.get("sources")))
+                    if name == "verify_owner" and isinstance(parsed, dict) and parsed.get("hosted_url"):
+                        reply.persona_url = str(parsed["hosted_url"])
                     order = actions.on_result(b.tool_use_id, name, parsed, err, esc)
                     if order:
                         reply.orders.append(order)
@@ -287,19 +338,22 @@ async def run_chat_async(chat_id: Any, text: str, history: list[dict] | None = N
         reply.error = f"{type(e).__name__}: {e}"
         print(f"[sal.chat] turn failed: {reply.error}", file=sys.stderr)
     finally:
-        body, ask = split_needs_owner(last_text)
+        body, ask = split_needs_owner(clean_text(last_text))
         if not ask and escalations:
             e0 = escalations[-1] if isinstance(escalations[-1], dict) else {}
             ask = str(e0.get("message") or e0.get("reason") or "Blocked by shop rules")[:120]
         if not body:
             body = "Hit a snag on that one. Try me again in a minute." if reply.error else "Done."
         reply.text, reply.needs_owner = body, ask
+        # chosen first, then rejections/blocks; keep it to 3 lines
+        why.sort(key=lambda w: 0 if "chose" in w.lower() or "pick" in w.lower() else 1)
+        reply.why = why[:3]
         if ask:
             actions.set("act_" + uuid.uuid4().hex[:10], "approval", "waiting_owner", ask)
         reply.actions = list(actions.state.values())
         emit.message("sal", body + (f"\nNeeds your OK: {ask}" if ask else ""))
         append_history(chat_id, "sal", body + (f"\n(Waiting on owner OK: {ask})" if ask else ""),
-                       "; ".join(notes)[:1500] or None)
+                       "; ".join(notes)[:1500] or None, reply.why)
         tracker.end(reply)
     return reply
 

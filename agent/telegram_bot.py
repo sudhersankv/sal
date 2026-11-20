@@ -29,9 +29,40 @@ DAY_CMD = re.compile(r"^/(mon|tue|wed|thu|fri|sat|sun)\b\s*", re.I)
 HELP = ("Sal here. Parts. Text me like you'd text your parts guy:\n"
         "- Civic in bay 2, P0141, VIN ..., promised by 3 PM\n"
         "- are we low on anything for next week?\n"
-        "- who's been late on alternators?")
+        "- who's been late on alternators?\n"
+        "- or send me a vendor bill (PDF or photo)\n"
+        "Shortcuts: /today /stock /orders /waiting /why")
 
-APPROVE_BUTTONS = [[{"text": "Approve", "callback_data": "ok|1"}, {"text": "Decline", "callback_data": "ok|0"}]]
+WHY_BUTTON = {"text": "Why?", "callback_data": "ok|w"}
+COMMANDS = {  # shortcuts; free text always works
+    "/today": "Give me today's brief: what needs me, what arrives today, what's low for upcoming bookings, "
+              "spend so far this week.",
+    "/stock": "What's low right now against the next 7 days of bookings?",
+    "/orders": "What orders are open, and when does each arrive? Flag anything late.",
+}
+
+
+def owner_buttons(persona_url: str | None = None) -> list[list[dict]]:
+    rows = [[{"text": "Approve", "callback_data": "ok|1"}, {"text": "Decline", "callback_data": "ok|0"}, WHY_BUTTON]]
+    if persona_url:
+        rows.append([{"text": "Verify it's you (Persona)", "url": persona_url}])
+    return rows
+
+
+def why_text(chat_id: Any) -> str:
+    from agent.chat import last_why
+
+    lines = last_why(chat_id)
+    return "\n".join(f"- {w}" for w in lines) if lines else "Nothing to explain yet. Ask me about a part or order."
+
+
+def waiting_text(chat_id: Any) -> str:
+    from agent.chat import waiting_items
+
+    items = waiting_items(chat_id)
+    if not items:
+        return "Nothing waiting on you."
+    return "Waiting on you:\n" + "\n".join(f"- {a.get('title')}" for a in items[-8:])
 
 logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx INFO logs full URLs (token in path)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -69,6 +100,13 @@ class Bot:
     def run_forever(self) -> None:
         me = self.call("getMe") or {}
         log(f"polling as @{me.get('username', '?')}")
+        self.call("setMyCommands", commands=[
+            {"command": "today", "description": "Today's brief"},
+            {"command": "stock", "description": "What's low"},
+            {"command": "orders", "description": "Open orders"},
+            {"command": "waiting", "description": "Waiting on you"},
+            {"command": "why", "description": "Why did Sal do that?"},
+        ])
         offset = None
         while True:
             ups = self.call("getUpdates", timeout=POLL_TIMEOUT, offset=offset,
@@ -79,10 +117,13 @@ class Bot:
             for u in ups:
                 offset = u["update_id"] + 1
                 try:
+                    m = u.get("message") or {}
                     if "callback_query" in u:
                         self.on_callback(u["callback_query"])
-                    elif (u.get("message") or {}).get("text"):
-                        self.on_message(u["message"])
+                    elif m.get("document") or m.get("photo"):
+                        self.on_file(m)
+                    elif m.get("text"):
+                        self.on_message(m)
                 except Exception as e:  # noqa: BLE001
                     log(f"update {u.get('update_id')} failed: {type(e).__name__}: {self._scrub(e)}")
 
@@ -98,6 +139,42 @@ class Bot:
             day, text = mt.group(1).lower(), text[mt.end():].strip()
             threading.Thread(target=self.job, args=(chat_id, day, text, m.get("from") or {}), daemon=True).start()
             return
+        cmd, _, arg = text.partition(" ")
+        cmd = cmd.lower().split("@")[0]
+        if cmd == "/waiting":
+            self.send(chat_id, waiting_text(chat_id))
+            return
+        if cmd == "/why" and not arg.strip():
+            self.send(chat_id, why_text(chat_id))
+            return
+        text = COMMANDS.get(cmd, text) if cmd in COMMANDS else (f"Why {arg}?" if cmd == "/why" else text)
+        threading.Thread(target=self.chat, args=(chat_id, text), daemon=True).start()
+
+    def on_file(self, m: dict) -> None:
+        """Bill photo / PDF -> download -> Sal parses + reconciles it."""
+        chat_id = m["chat"]["id"]
+        if chat_id in self.busy:
+            self.send(chat_id, "One sec, still on your last one.")
+            return
+        doc = m.get("document") or (m.get("photo") or [{}])[-1]  # largest photo size is last
+        name = doc.get("file_name") or f"photo_{doc.get('file_unique_id', 'x')}.jpg"
+        info = self.call("getFile", file_id=doc.get("file_id")) or {}
+        if not info.get("file_path"):
+            self.send(chat_id, "Couldn't pull that file down. Send it again?")
+            return
+        dest = sal.ROOT / "runs" / "chat" / "files" / str(chat_id) / re.sub(r"[^\w.\-]", "_", name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            r = self.http.get(f"https://api.telegram.org/file/bot{self._token}/{info['file_path']}")
+            r.raise_for_status()
+            dest.write_bytes(r.content)
+        except Exception as e:  # noqa: BLE001
+            log(f"file download failed: {type(e).__name__}")
+            self.send(chat_id, "Couldn't pull that file down. Send it again?")
+            return
+        caption = (m.get("caption") or "").strip()
+        text = (f"I just sent you a vendor bill/statement, saved at {dest.as_posix()}. "
+                f"Read it, reconcile it against what we bought, tell me what's off. {caption}").strip()
         threading.Thread(target=self.chat, args=(chat_id, text), daemon=True).start()
 
     # ------------------------------------------------------------ chat mode
@@ -117,7 +194,9 @@ class Bot:
             r = run_chat(chat_id, text, actor=actor)
             stop.set()
             if r.needs_owner:
-                self.send(chat_id, f"{r.text}\n\nNeeds your OK: {r.needs_owner}", APPROVE_BUTTONS)
+                self.send(chat_id, f"{r.text}\n\nNeeds your OK: {r.needs_owner}", owner_buttons(r.persona_url))
+            elif r.why:
+                self.send(chat_id, r.text, [[WHY_BUTTON]])
             else:
                 self.send(chat_id, r.text)
         except Exception as e:  # noqa: BLE001
@@ -131,11 +210,19 @@ class Bot:
     def on_callback(self, q: dict) -> None:
         parts = (q.get("data") or "").split("|")
         msg = q.get("message") or {}
-        if len(parts) == 2 and parts[0] == "ok" and msg:  # chat mode: the owner's answer goes back to Sal
-            chat_id, yes = msg["chat"]["id"], parts[1] == "1"
+        if len(parts) == 2 and parts[0] == "ok" and msg:  # chat mode
+            chat_id = msg["chat"]["id"]
+            if parts[1] == "w":  # Why?
+                self.call("answerCallbackQuery", callback_query_id=q["id"])
+                self.call("sendMessage", chat_id=chat_id, text=why_text(chat_id),
+                          reply_to_message_id=msg["message_id"])
+                return
+            yes = parts[1] == "1"
             self.call("answerCallbackQuery", callback_query_id=q["id"], text="Approved." if yes else "Declined.")
-            self.call("editMessageReplyMarkup", chat_id=chat_id, message_id=msg["message_id"],
-                      reply_markup={"inline_keyboard": []})
+            # edit the original message in place: stamp the decision, keep only Why?
+            self.call("editMessageText", chat_id=chat_id, message_id=msg["message_id"],
+                      text=f"{msg.get('text', '')}\n\n{'✅ Approved' if yes else '❌ Declined'}"[:4000],
+                      disable_web_page_preview=True, reply_markup={"inline_keyboard": [[WHY_BUTTON]]})
             if chat_id not in self.busy:
                 answer = "Approved, go ahead." if yes else "Declined. Don't order it."
                 threading.Thread(target=self.chat, args=(chat_id, answer), daemon=True).start()

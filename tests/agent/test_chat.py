@@ -68,3 +68,32 @@ def test_chat_events_match_schema():
     captured.append(ev2)
     for e in captured:
         jsonschema.validate(e, SCHEMA)
+
+
+def test_clean_text_and_why_line():
+    assert chat.clean_text("## Done\n**Cap:** over") == "Done\nCap: over"
+    w = chat.why_line("Denso, preferred brand, ETA beats promise", [{"name": "Senso", "ref": "R7"}, {"name": "SIE"}])
+    assert w.endswith("(sources: Senso R7, SIE)")
+
+
+def test_waiting_items_and_api(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from agent import chat_api
+    from agent import sal as core
+
+    monkeypatch.setattr(core, "ROOT", tmp_path)
+    monkeypatch.setattr(chat, "chat_dir", lambda: tmp_path / "chat")
+    log = tmp_path / "runs" / "chat-ui-20261120" / "events.jsonl"
+    log.parent.mkdir(parents=True)
+    rows = [{"type": "action.status", "data": {"action_id": "a1", "status": "waiting_owner", "title": "Alt $260"}},
+            {"type": "action.status", "data": {"action_id": "a2", "status": "waiting_owner", "title": "Rule"}},
+            {"type": "action.status", "data": {"action_id": "a2", "status": "done", "title": "Rule"}}]
+    log.write_text(chr(10).join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert [a["title"] for a in chat.waiting_items("ui")] == ["Alt $260"]
+
+    monkeypatch.setattr(chat, "run_chat", lambda cid, text, h=None, **kw: chat.ChatReply(text=f"echo {text}", run_id="r"))
+    c = TestClient(chat_api.app)
+    out = c.post("/chat", json={"chat_id": "ui", "text": "are we low?"}).json()
+    assert out["reply"] == "echo are we low?" and out["actions"] == []
+    assert c.get("/chat/ui/waiting").json()["waiting"][0]["title"] == "Alt $260"
