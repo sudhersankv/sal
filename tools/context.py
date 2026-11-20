@@ -54,7 +54,10 @@ def day() -> str:
 
 
 def now() -> datetime:
-    ts = _override.get("ts") or _clock_file().get("ts") or os.environ.get("SAL_SIM_TS")
+    ts = _override.get("ts")
+    if not ts and _override.get("day") in DEFAULT_TS:
+        ts = DEFAULT_TS[_override["day"]]
+    ts = ts or _clock_file().get("ts") or os.environ.get("SAL_SIM_TS")
     if not ts:
         d = _override.get("day") or os.environ.get("SAL_DAY") or "mon"
         ts = DEFAULT_TS.get(d, DEFAULT_TS["mon"])
