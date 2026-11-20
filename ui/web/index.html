@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sal · Mission Street Auto</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%2322c550'/></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="dot"></span><b>SAL</b><span class="sep"></span><span class="muted">Mission Street Auto</span><span class="tag mono">your parts team</span></div>
+        <div class="clock mono" id="clock">— —:—</div>
+        <nav class="days" id="days"></nav>
+        <button class="btn next" id="next">Next day <span>▶</span></button>
+        <div class="replayctl" id="replayctl">
+          <button class="btn icon" id="play" title="Play / pause">❚❚</button>
+          <div class="speeds" id="speeds"></div>
+        </div>
+        <div class="mode mono" id="mode"><span class="led"></span><span id="modeText">LIVE</span></div>
+      </header>
+
+      <section class="stage" id="stage">
+        <canvas id="scene"></canvas>
+        <div class="labels" id="labels"></div>
+        <div class="vendor-overlay" id="vendorOverlay"></div>
+        <div class="stage-caption mono"><span>SHOP FLOOR</span><span class="muted" id="stageNote">4 bays · counter · office</span></div>
+        <div class="toast" id="toast"></div>
+      </section>
+
+      <section class="strip" id="strip">
+        <div class="strip-head"><span class="mono label" id="stripTitle">PARTS</span><span class="muted mono" id="stripSub"></span></div>
+        <div class="strip-body" id="stripBody"></div>
+      </section>
+
+      <aside class="trail">
+        <div class="trail-head">
+          <span class="mono label">SAL'S TRAIL</span>
+          <span class="muted mono" id="trailCount">0 events</span>
+        </div>
+        <div class="trail-list" id="trail"></div>
+      </aside>
+
+      <footer class="meters" id="meters"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
