@@ -1,0 +1,42 @@
+[project]
+name = "sal"
+version = "0.1.0"
+description = "Sal: Your Parts Team, a proactive parts agent for small repair shops"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "claude-agent-sdk",
+  "mcp[cli]",
+  "fastapi",
+  "uvicorn[standard]",
+  "sse-starlette",
+  "httpx",
+  "python-dotenv",
+  "jsonschema",
+  "singlestoredb",
+  "numpy",
+  "statsig-python-core",
+  "amplitude-ai",
+  "sie-sdk",
+]
+
+[project.optional-dependencies]
+memory = ["cognee"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 110
+extend-exclude = ["ui/web", "runs", "seed/cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.uv]
+package = false

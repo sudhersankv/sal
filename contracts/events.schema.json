@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SalEvent",
+  "type": "object",
+  "required": [
+    "id",
+    "run_id",
+    "ts",
+    "day",
+    "type",
+    "actor",
+    "summary"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-z]+$"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "SIMULATED shop time, ISO 8601"
+    },
+    "day": {
+      "enum": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun"
+      ]
+    },
+    "type": {
+      "enum": [
+        "repair_order.created",
+        "part.identified",
+        "context.retrieved",
+        "vendors.compared",
+        "part.rejected",
+        "part.chosen",
+        "quote.sent",
+        "approval.requested",
+        "approval.received",
+        "order.placed",
+        "order.delivered",
+        "payment.recorded",
+        "inventory.checked",
+        "stock.low",
+        "restock.planned",
+        "statement.parsed",
+        "escalation",
+        "scorecard.built",
+        "rule.proposed",
+        "rule.approved",
+        "memory.saved",
+        "gate.enabled",
+        "metrics.updated",
+        "sal.summary",
+        "error"
+      ]
+    },
+    "actor": {
+      "enum": [
+        "sal",
+        "tech",
+        "owner",
+        "car_owner",
+        "vendor",
+        "system"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 140,
+      "description": "One line, human readable, shown in timeline"
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "Senso",
+              "NHTSA",
+              "SingleStore",
+              "SIE",
+              "Cognee",
+              "Shopify",
+              "Firedrill",
+              "Statsig",
+              "Amplitude",
+              "Vendor",
+              "Shop"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "description": "rule id, content_id, order id, SQL table, URL…"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "money": {
+      "type": "object",
+      "properties": {
+        "wholesale": {
+          "type": "number"
+        },
+        "retail": {
+          "type": "number"
+        },
+        "saved": {
+          "type": "number"
+        },
+        "currency": {
+          "const": "USD"
+        }
+      }
+    },
+    "refs": {
+      "type": "object",
+      "description": "ids to link entities: ro_id, order_id, part_no, vendor_id, sku, rule_id"
+    },
+    "data": {
+      "type": "object",
+      "description": "type-specific payload, see tools.md"
+    }
+  }
+}
