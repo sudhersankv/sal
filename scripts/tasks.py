@@ -52,6 +52,10 @@ def t_dev():
     _wait(procs)
 
 
+def t_bot():
+    run(*PY, "-m", "agent.telegram_bot")
+
+
 def t_week():
     run(*PY, "-m", "sim.run", "--week")
 

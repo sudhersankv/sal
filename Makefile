@@ -1,5 +1,5 @@
 TASK = uv run python scripts/tasks.py
-.PHONY: setup seed dev ui tools vendors week record demo check
+.PHONY: bot setup seed dev ui tools vendors week record demo check
 setup:
 	$(TASK) setup
 seed:
@@ -20,3 +20,5 @@ demo:
 	$(TASK) demo
 check:
 	$(TASK) check
+bot:
+	$(TASK) bot
