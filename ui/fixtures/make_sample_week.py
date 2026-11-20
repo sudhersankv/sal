@@ -36,10 +36,24 @@ def M(**kw):
     return {**kw, "currency": "USD"}
 
 
-SHOPIFY_GID = "gid://shopify/Order/6123456789012"
+def chat(day, hhmm, actor, text, chat_id="tg-shop", intent=None):
+    ev(day, hhmm, "chat.message", actor, text[:140], sources=[S("Shop", "telegram")],
+       data={"channel": "telegram", "chat_id": chat_id, "text": text, **({"intent": intent} if intent else {})})
+
+
+def act(day, hhmm, action_id, kind, status, title, refs=None):
+    label = {"planned": "planned", "waiting_owner": "waiting on owner", "in_progress": "in progress",
+             "done": "done", "refused": "refused", "failed": "failed"}[status]
+    ev(day, hhmm, "action.status", "sal", f"{title}: {label}"[:140], refs=refs or {},
+       data={"action_id": action_id, "kind": kind, "status": status, "title": title})
+
+
+SHOPIFY_GID ="gid://shopify/Order/6123456789012"
 SHOPIFY_ADMIN = "https://admin.shopify.com/store/sal-parts-dev/orders/6123456789012"
 
 # ---------------- MON 09:12 urgent buy ----------------
+chat("mon", "09:11", "tech", "Civic in bay 2 throwing P0141, VIN 19XFB2F59EE000000. Customer wants it by 3.",
+     intent="new_job")
 ev("mon", "09:12", "repair_order.created", "tech",
    "Civic in bay 2, P0141, customer promised by 3 PM",
    reason="Intake text parsed into a repair order",
@@ -47,6 +61,8 @@ ev("mon", "09:12", "repair_order.created", "tech",
    refs={"ro_id": "RO-1042"},
    data={"bay": 2, "vin": "19XFB2F59EE000000", "dtc": "P0141", "vehicle": "2014 Honda Civic 1.8L",
          "promise_time": "15:00"})
+act("mon", "09:12", "act_ro1042_part", "order", "planned", "Get O2 sensor for Civic (RO-1042)", {"ro_id": "RO-1042"})
+chat("mon", "09:12", "sal", "On it. Opened RO-1042, decoding the VIN and checking our rules for that sensor.")
 ev("mon", "09:13", "part.identified", "sal",
    "2014 Civic 1.8L, P0141 = downstream O2 sensor (bank 1 sensor 2), OEM 36532-R1A-A01",
    reason="VIN decoded by NHTSA vPIC; P0141 maps to the post-cat heater circuit in fitments",
@@ -105,6 +121,8 @@ ev("mon", "09:17", "part.chosen", "sal", "Denso 234-4364 @ Mission Auto Supply $
    reason="Preferred brand (R7), local counter (R5), arrives 4h40m before promise",
    sources=[S("Senso", "R7"), S("Vendor", "mission")],
    money=M(wholesale=41), refs={"ro_id": "RO-1042", "vendor_id": "mission", "sku": "MAS-234-4364"})
+act("mon", "09:17", "act_ro1042_part", "order", "in_progress", "Get O2 sensor for Civic (RO-1042)", {"ro_id": "RO-1042"})
+act("mon", "09:18", "act_ro1042_quote", "quote", "in_progress", "Quote $177 to Dana Ruiz (RO-1042)", {"ro_id": "RO-1042"})
 ev("mon", "09:18", "quote.sent", "sal", "Quote to Dana Ruiz: O2 sensor $82 + labor $95 = $177",
    reason="R2 markup, $25-75 tier x2.0",
    sources=[S("Senso", "R2"), S("Firedrill", "gmail:dana.ruiz")],
@@ -115,6 +133,7 @@ ev("mon", "09:18", "approval.requested", "sal", "Waiting on Dana Ruiz to approve
    sources=[S("Firedrill", "gmail:dana.ruiz")], refs={"ro_id": "RO-1042", "approval_id": "apv_1042"})
 ev("mon", "09:24", "approval.received", "car_owner", "Dana Ruiz approved the $177 repair",
    sources=[S("Firedrill", "gmail:reply")], refs={"ro_id": "RO-1042", "approval_id": "apv_1042"})
+act("mon", "09:24", "act_ro1042_quote", "quote", "done", "Quote $177 to Dana Ruiz (RO-1042)", {"ro_id": "RO-1042"})
 ev("mon", "09:25", "order.placed", "sal", "Counter order MAS-58213 at Mission Auto Supply, $41, ETA 10:20",
    sources=[S("Vendor", "mission:MAS-58213"), S("SingleStore", "orders")],
    money=M(wholesale=41, retail=82), refs={"ro_id": "RO-1042", "order_id": "MAS-58213", "vendor_id": "mission"},
@@ -124,6 +143,11 @@ ev("mon", "09:25", "payment.recorded", "sal", "Stripe test payment $177 recorded
 ev("mon", "10:18", "order.delivered", "vendor", "Mission delivered Denso O2 sensor, 2 min early",
    sources=[S("Vendor", "mission:MAS-58213")],
    refs={"ro_id": "RO-1042", "order_id": "MAS-58213", "vendor_id": "mission", "sku": "MAS-234-4364"})
+act("mon", "10:18", "act_ro1042_part", "order", "done", "Get O2 sensor for Civic (RO-1042)",
+    {"ro_id": "RO-1042", "order_id": "MAS-58213"})
+chat("mon", "10:18", "sal", "Denso downstream O2 sensor is at the counter for bay 2 ($41 from Mission). "
+     "Skipped ValuMax (our no-buy list) and the 2-day online one.")
+chat("mon", "10:20", "tech", "Got it, thanks Sal")
 ev("mon", "10:19", "sal.summary", "sal",
    "Civic part on the lift by 10:18, $82 retail on $41 cost, 4 bad options avoided",
    reason="Rejected ValuMax (R4), 2-day ship (R5), late NTK (R5), wrong-position sensor (SIE); bought Denso at Mission",
@@ -141,6 +165,10 @@ ev("tue", "11:04", "part.chosen", "sal", "Motorcraft alternator @ Mission $260, 
    reason="Only on-time in-stock reman unit",
    sources=[S("Vendor", "mission"), S("Airbyte", "price_sheets:mission")],
    money=M(wholesale=260), refs={"ro_id": "RO-1043", "vendor_id": "mission", "sku": "MAS-GL-8758"})
+act("tue", "11:04", "act_ro1043_alt", "order", "waiting_owner", "Buy $260 alternator for F-150 (RO-1043)",
+    {"ro_id": "RO-1043"})
+chat("tue", "11:04", "sal", "F-150 alternator is $260 at Mission, over your $200 cap. Approve? I'll verify it's you first.",
+     chat_id="tg-owner")
 ev("tue", "11:04", "escalation", "sal", "$260 alternator is over the $200 spend cap: needs owner",
    reason="R1 spend cap: single order > $200 needs owner approval",
    sources=[S("Senso", "R1")], money=M(wholesale=260),
@@ -150,6 +178,7 @@ ev("tue", "11:09", "identity.verified", "owner", "Owner identity verified (Maria
    reason="Over-cap orders need a verified owner (R1 + KYA)",
    sources=[S("Persona", "inq_sandbox_7Hq2")], refs={"ro_id": "RO-1043", "inquiry_id": "inq_sandbox_7Hq2"},
    data={"status": "approved", "verified_name": "Maria Lopez", "method": "persona"})
+chat("tue", "11:09", "owner", "Yes, go ahead", chat_id="tg-owner", intent="approve")
 ev("tue", "11:10", "approval.received", "owner", "Owner approved the $260 alternator",
    sources=[S("Shop", "owner-ui")], refs={"ro_id": "RO-1043", "approval_id": "apv_owner_1043"})
 ev("tue", "11:10", "order.placed", "sal", "Counter order MAS-58240 at Mission, $260 alternator",
@@ -157,9 +186,13 @@ ev("tue", "11:10", "order.placed", "sal", "Counter order MAS-58240 at Mission, $
    money=M(wholesale=260, retail=390),
    refs={"ro_id": "RO-1043", "order_id": "MAS-58240", "vendor_id": "mission"},
    data={"channel": "counter", "eta": "13:05"})
+act("tue", "11:10", "act_ro1043_alt", "order", "in_progress", "Buy $260 alternator for F-150 (RO-1043)",
+    {"ro_id": "RO-1043", "order_id": "MAS-58240"})
 ev("tue", "13:01", "order.delivered", "vendor", "Mission delivered F-150 alternator",
    sources=[S("Vendor", "mission:MAS-58240")],
    refs={"ro_id": "RO-1043", "order_id": "MAS-58240", "sku": "MAS-GL-8758"})
+act("tue", "13:01", "act_ro1043_alt", "order", "done", "Buy $260 alternator for F-150 (RO-1043)",
+    {"ro_id": "RO-1043", "order_id": "MAS-58240"})
 ev("tue", "13:02", "metrics.updated", "system", "Margin 35%, 2 orders, 1 escalation handled",
    data={"margin_pct": 35.3, "saved": 0, "on_time_pct": 100, "orders": 2, "escalations": 1,
          "variant": "control"})
@@ -178,11 +211,16 @@ ev("wed", "07:32", "restock.planned", "sal", "Restock 9 filters + 4 wipers + 6 b
    sources=[S("Senso", "R6"), S("Shopify", "partsdepot")], money=M(wholesale=151, saved=12.99),
    data={"lines": [{"sku": "FLT-15400-PLM-A02", "qty": 5}, {"sku": "FLT-04152-YZZA1", "qty": 4},
                    {"sku": "WPR-26", "qty": 4}, {"sku": "CHM-BRAKECLN", "qty": 6}]})
+act("wed", "07:32", "act_restock_wed", "restock", "in_progress", "Restock filters + wipers before Thursday", {})
 ev("wed", "07:33", "order.placed", "sal", "Shopify order #1001 at PartsDepot, $151, free shipping",
    sources=[S("Shopify", SHOPIFY_GID, SHOPIFY_ADMIN)],
    money=M(wholesale=151, saved=12.99),
    refs={"order_id": SHOPIFY_GID, "vendor_id": "partsdepot"},
    data={"channel": "shopify", "shopify_order_id": SHOPIFY_GID, "admin_url": SHOPIFY_ADMIN, "fixture": True})
+act("wed", "07:33", "act_restock_wed", "restock", "done", "Restock filters + wipers before Thursday",
+    {"order_id": SHOPIFY_GID})
+chat("wed", "07:34", "sal", "Morning. Ordered 9 oil filters, 4 wipers and 6 brake cleaner on PartsDepot ($151, free "
+     "shipping). Arrives Friday, before the oil changes.", chat_id="tg-owner")
 ev("wed", "07:34", "sal.summary", "sal", "Restocked before Thursday oil changes; shipping waived",
    sources=[S("Shopify", "order #1001")], money=M(saved=12.99))
 ev("wed", "07:34", "metrics.updated", "system", "3 orders, $12.99 saved",
@@ -200,6 +238,12 @@ ev("fri", "16:01", "escalation", "sal", "Dispute drafted: Bayshore owes $90 in 2
    money=M(saved=90), refs={"vendor_id": "bayshore", "escalation_id": "esc_dispute_bay"},
    data={"kind": "dispute_drafted", "needs": "owner", "action": "send_dispute", "total_due": 90})
 
+act("fri", "16:01", "act_dispute_bay", "dispute", "waiting_owner", "Send Bayshore a $90 core-credit dispute",
+    {"vendor_id": "bayshore", "escalation_id": "esc_dispute_bay"})
+chat("fri", "16:02", "owner", "what did bayshore short us this month?", chat_id="tg-owner", intent="question")
+chat("fri", "16:02", "sal", "2 core credits, $90 total (starter + alternator returns). Dispute email is drafted; "
+     "tap approve and I'll send it.", chat_id="tg-owner")
+
 # ---------------- SUN 18:00 gets smarter ----------------
 ev("sun", "18:00", "scorecard.built", "sal",
    "Bayshore late on 3 of 8 starters/alternators (37.5%), 2 missed core credits",
@@ -215,6 +259,9 @@ ev("sun", "18:02", "rule.proposed", "sal", "Proposed: route starters & alternato
    sources=[S("SingleStore", "scorecard"), S("Cognee", "facts")],
    money=M(saved=140), refs={"rule_id": "R8"},
    data={"needs": "owner", "action": "approve_rule", "title": "Route starters & alternators to Mission"})
+act("sun", "18:02", "act_rule_r8", "rule", "waiting_owner", "New rule: starters & alternators go to Mission",
+    {"rule_id": "R8"})
+act("sun", "18:05", "act_rule_r8", "rule", "done", "New rule: starters & alternators go to Mission", {"rule_id": "R8"})
 ev("sun", "18:05", "rule.approved", "owner", "Owner approved R8: starters & alternators go to Mission",
    sources=[S("Senso", "R8"), S("Shop", "owner-ui")], refs={"rule_id": "R8"},
    data={"title": "Route starters & alternators to Mission"})

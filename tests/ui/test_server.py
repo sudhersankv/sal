@@ -11,6 +11,7 @@ from ui.server import app as app_mod
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app_mod, "RUNS", tmp_path)
     monkeypatch.setattr(app_mod, "_events", [])
+    monkeypatch.setenv("UI_SKIP_SEED", "1")
     monkeypatch.setattr(app_mod, "_seen", set())
     monkeypatch.setattr(app_mod, "_logged", {})
     monkeypatch.setattr(app_mod, "SIM_URL", "http://127.0.0.1:9")  # nothing listens
