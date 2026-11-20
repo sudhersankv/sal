@@ -6,7 +6,7 @@ primary_region = "sjc"
 
 [env]
   DEMO_MODE = "live"
-  DB_BACKEND = "sqlite"
+  DB_BACKEND = "singlestore"
   SAL_UI_URL = "http://127.0.0.1:8080"
   SAL_VENDORS_URL = "http://127.0.0.1:8101"
   SIM_API_URL = "http://127.0.0.1:8102"
