@@ -10,6 +10,8 @@ Sal is a personal agent for an independent auto repair shop. It buys the exact p
 
 - **Live dashboard:** https://sal-parts-team.fly.dev
 - **Talk to Sal on Telegram:** [@handysalbot](https://t.me/handysalbot)
+- **Connect your own agent (MCP):** `https://sal-parts-team.fly.dev/mcp` with a bearer token, see [docs/MCP.md](docs/MCP.md)
+- **Deploys:** every push to `main` runs checks and deploys to Fly (`.github/workflows/deploy.yml`)
 - **Demo video:** _link_
 
 ---
