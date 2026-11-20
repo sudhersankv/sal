@@ -117,3 +117,10 @@ Reads `seed/cache/nhtsa/` first, then live, writes `runs/cache/nhtsa/`.
 ## smoke
 
 `uv run python -m tools.integrations.smoke` → table `service | key? | live call ok? | fallback in use` (no secrets).
+
+## Status / what remains (2026-11-20)
+
+- Verified live: **NHTSA** (vPIC decode + complaints). All other keys were empty at build time → fallbacks exercised; live paths coded against the installed SDK source (`sie_sdk` 0.11.1, `cognee` 1.6.10, `statsig-python-core` 0.24.2, `amplitude`) / official docs.
+- **Airbyte:** docs document no REST/SDK record-search endpoint; the only headless path is the hosted MCP (`https://mcp.airbyte.com/mcp`, `Client-Id`/`Client-Secret` headers) tool `execute_external_search_query`, which needs agent connectors + search enabled + a backfill in Airbyte Cloud. Its input schema isn't documented, so we discover it via `list_tools`. Until a Sheet source is connected and backfilled, `search_shop_data` serves `seed/shop_sheets/*.csv` (`source="csv"`).
+- **Persona:** headless runs can't finish the hosted flow; `verify_owner` returns `pending` + `hosted_url`; the owner UI calls `persona.approve(inquiry_id)` (live `POST /inquiries/{id}/approve` in sandbox, or simulated).
+- **SIE model ids:** if `SIE_*_MODEL` is empty we pick by name from `list_models()` and log the choice to stderr once — copy it into `.env`.
