@@ -9,3 +9,4 @@ ui/web/dist
 runs/*
 !runs/demo/
 firedrill/build
+.claude

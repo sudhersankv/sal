@@ -17,4 +17,7 @@ COPY . .
 COPY --from=web /app/ui/web/dist ui/web/dist
 EXPOSE 8080
 RUN chmod +x deploy/fly_start.sh && python -c "import claude_agent_sdk, pathlib; b=pathlib.Path(claude_agent_sdk.__file__).parent/'_bundled'; print('bundled claude:', sorted(p.name for p in b.iterdir()))"
+RUN useradd --create-home --uid 10001 sal && chown -R sal:sal /app
+USER sal
+ENV HOME=/home/sal
 CMD ["bash", "deploy/fly_start.sh"]
