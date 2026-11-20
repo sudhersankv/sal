@@ -17,7 +17,8 @@
       "readiness": {"kind": "stdout", "pattern": "READY"},
       "readiness_timeout_ms": 120000,
       "stop_timeout_ms": 5000,
-      "per_drill": true
+      "per_drill": true,
+      "port_env": null
     }
   ],
   "driver": {"profile": "jsonl-process.v1", "service_alias": "agent"},
