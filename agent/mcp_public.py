@@ -17,7 +17,9 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
+import httpx
 from mcp.server.mcpserver import MCPServer
 
 from agent import chat
@@ -79,6 +81,54 @@ async def ask_sal(message: str, caller: str = "mcp") -> dict:
     r = await _chat(_thread(caller), message)
     return {"summary": r.text.splitlines()[0][:200] if r.text else "", "reply": r.text, "needs_owner": r.needs_owner,
             "actions": r.actions, "orders": r.orders, "why": r.why, "persona_url": r.persona_url, "error": r.error}
+
+
+_MAX_BILL_BYTES = 15 * 1024 * 1024
+_BILL_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".csv", ".heic"}
+
+
+@mcp.tool()
+async def send_bill(filename: str, file_base64: str | None = None, url: str | None = None, note: str = "",
+                    caller: str = "mcp") -> dict:
+    """Hand Sal a vendor bill, invoice or statement (photo or PDF), exactly like sending it to Sal on Telegram.
+
+    Sal reads it (OCR / document parsing), reconciles every line against what the shop bought, and reports what's
+    off, e.g. core credits the vendor never paid back, and drafts a dispute (it never sends it). Give the file
+    either as `file_base64` (raw bytes, base64-encoded) or as an https `url`. `filename` should keep its extension
+    (.pdf, .png, .jpg, .jpeg, .webp, .csv). Max 15 MB. `note` is optional context ("Bayshore's November statement").
+    Returns the same shape as ask_sal.
+    """
+    import base64
+    import re as _re
+
+    ext = Path(filename).suffix.lower()
+    if ext not in _BILL_EXTS:
+        return {"error": f"unsupported file type {ext or '(none)'}; send a PDF, image or CSV"}
+    try:
+        if file_base64:
+            data = base64.b64decode(file_base64.split(",", 1)[-1], validate=False)
+        elif url and url.startswith("https://"):
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as c:
+                r = await c.get(url)
+                r.raise_for_status()
+                data = r.content
+        else:
+            return {"error": "give file_base64 or an https url"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"couldn't read the file: {type(e).__name__}"}
+    if not data or len(data) > _MAX_BILL_BYTES:
+        return {"error": "file is empty or over 15 MB"}
+    thread = _thread(caller)
+    safe = _re.sub(r"[^\w.\-]", "_", Path(filename).name)
+    dest = chat.chat_dir() / "files" / _re.sub(r"[^\w.\-]", "_", str(thread)) / safe
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    text = (f"I just sent you a vendor bill/statement, saved at {dest.as_posix()}. "
+            f"Read it, reconcile it against what we bought, tell me what's off. {note}").strip()
+    r = await _chat(thread, text)
+    return {"summary": r.text.splitlines()[0][:200] if r.text else "", "reply": r.text, "needs_owner": r.needs_owner,
+            "actions": r.actions, "orders": r.orders, "why": r.why, "persona_url": r.persona_url, "error": r.error,
+            "saved_as": safe}
 
 
 def _today() -> dict:

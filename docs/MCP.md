@@ -94,3 +94,13 @@ async with httpx2.AsyncClient(headers={"Authorization": "Bearer <token>"}, timeo
   }
 }
 ```
+
+## Sending a bill or photo (`send_bill`)
+
+Agents can hand Sal a vendor bill, invoice or statement the same way staff send one on Telegram:
+
+```json
+{"tool": "send_bill", "arguments": {"filename": "bayshore_2026-11.pdf", "url": "https://github.com/sudhersankv/sal/raw/main/seed/statements/bayshore_2026-11.pdf", "note": "Bayshore November statement"}}
+```
+
+Or pass the bytes as `file_base64`. Accepted: .pdf .png .jpg .jpeg .webp .csv (max 15 MB). Sal parses it (SIE docling / OCR), reconciles it against purchase history in SingleStore, and replies with what's off (e.g. missing core credits) plus a drafted dispute. It never sends the dispute.
