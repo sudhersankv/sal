@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -295,7 +296,7 @@ def get_db(fresh: bool = False) -> DB:
                 _DB = SingleStoreDB()
                 return _DB
             except Exception as e:  # never block the demo on the DB
-                print(f"SKIP singlestore: connect failed ({type(e).__name__}); using sqlite fallback")
+                print(f"SKIP singlestore: connect failed ({type(e).__name__}); using sqlite fallback", file=sys.stderr)
         _DB = SqliteDB()
         return _DB
 

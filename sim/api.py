@@ -86,7 +86,22 @@ def sim_approve(body: ApproveBody) -> dict:
     if body.kind not in KINDS:
         raise HTTPException(400, f"kind must be one of {KINDS}")
     a = ACTORS.decide(body.kind, body.id, body.approved)
+    _write_approval_file(body.id, body.approved)
     return {"ok": True, "approval": a.public() if a else None}
+
+
+def _write_approval_file(approval_id: str, approved: bool) -> None:
+    """Bridge to tools/impl.py, which waits on runs/<run_id>/approvals/<approval_id>.json."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    run_id = _state.get("run_id")
+    if not run_id or not approval_id:
+        return
+    d = _Path(__file__).resolve().parents[1] / "runs" / run_id / "approvals"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{approval_id}.json").write_text(
+        _json.dumps({"status": "approved" if approved else "declined"}), encoding="utf-8")
 
 
 @app.get("/sim/approvals")
