@@ -50,8 +50,7 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line); background: var(--canvas);
 }
 .brand { display: flex; align-items: center; gap: 10px; font: 500 15px var(--display); letter-spacing: 0.02em; white-space: nowrap; }
-.brand b { font-weight: 600; letter-spacing: 0.14em; }
-.brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.brand .logo { display: block; width: 24px; height: 24px; }
 .brand .sep { width: 1px; height: 16px; background: var(--line-2); }
 .brand .tag { font-size: 11px; color: var(--tert); border: 1px solid var(--line-2); border-radius: var(--r-pill); padding: 3px 8px; }
 .clock { font-size: 15px; color: var(--text); min-width: 120px; letter-spacing: 0.04em; }

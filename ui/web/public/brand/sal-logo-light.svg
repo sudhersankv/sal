@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 172 64" width="172" height="64" role="img" aria-label="Sal">
+  <defs><clipPath id="cap"><rect x="110" y="16.25" width="40" height="31.5"/></clipPath></defs>
+  <path d="M32 5.5 55 18.75V45.25L32 58.5 9 45.25V18.75Z" fill="none" stroke="#111111" stroke-width="3" stroke-linejoin="miter"/>
+  <circle cx="32" cy="32" r="9.5" fill="none" stroke="#111111" stroke-width="3"/>
+  <path d="M32 15.5A16.5 16.5 0 0 1 46.29 23.75" fill="none" stroke="#22c550" stroke-width="3.5" stroke-linecap="butt"/>
+  <path d="M108 18H92L88 22V28L92 32H104L108 36V42L104 46H88" fill="none" stroke="#111111" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <path clip-path="url(#cap)" d="M115.9 50 127.3 18H130.7L142.1 50M120.5 37H137.5" fill="none" stroke="#111111" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <path d="M151 18V46H168" fill="none" stroke="#111111" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="butt"/>
+</svg>
