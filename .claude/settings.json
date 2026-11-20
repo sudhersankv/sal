@@ -1,0 +1,10 @@
+{
+  "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" },
+  "permissions": {
+    "allow": [
+      "Bash(git *)", "Bash(gh *)", "Bash(uv *)", "Bash(python *)", "Bash(pytest *)",
+      "Bash(make *)", "Bash(npm *)", "Bash(npx *)", "Bash(curl *)", "Bash(firedrill *)",
+      "Read", "Edit", "Write"
+    ]
+  }
+}
