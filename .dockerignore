@@ -8,5 +8,4 @@ ui/web/dist
 .git
 runs/*
 !runs/demo/
-seed/cache/sie
 firedrill/build

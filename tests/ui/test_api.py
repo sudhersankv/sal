@@ -15,6 +15,7 @@ def client(tmp_path_factory):
     dbc._DB = None
     from ui.server import api
     mp.setattr(api, "RUNS", tmp / "runs")  # only the fixture as event source
+    mp.setattr(api, "DEMO_LOG", tmp / "no-demo.jsonl")
     api._cache["key"] = None
     api.ensure_seeded(background=False)
     from ui.server.app import app

@@ -5,15 +5,20 @@ primary_region = "sjc"
   dockerfile = "Dockerfile"
 
 [env]
-  DEMO_MODE = "replay"
+  DEMO_MODE = "live"
+  DB_BACKEND = "sqlite"
+  SAL_UI_URL = "http://127.0.0.1:8080"
+  SAL_VENDORS_URL = "http://127.0.0.1:8101"
+  SIM_API_URL = "http://127.0.0.1:8102"
+  SAL_MCP_UPSTREAM = "http://127.0.0.1:8103"
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = "off"     # Telegram long-polling must stay up
   auto_start_machines = true
   min_machines_running = 1
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  size = "shared-cpu-2x"
+  memory = "2gb"

@@ -40,6 +40,29 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.include_router(api.router)
 
 
+# Public Sal MCP on the same origin: /mcp is streamed through to agent.mcp_public (SAL_MCP_UPSTREAM,
+# e.g. http://127.0.0.1:8103). The upstream enforces the Bearer token; this only forwards.
+_MCP_UPSTREAM = os.environ.get("SAL_MCP_UPSTREAM", "").rstrip("/")
+if _MCP_UPSTREAM:
+    from starlette.background import BackgroundTask
+    from starlette.responses import StreamingResponse
+
+    _mcp_client = httpx.AsyncClient(base_url=_MCP_UPSTREAM, timeout=httpx.Timeout(None, connect=10.0))
+    _HOP = {"host", "content-length", "transfer-encoding", "connection", "keep-alive"}
+
+    @app.api_route("/mcp", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+    @app.api_route("/mcp/{rest:path}", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+    async def mcp_proxy(request: Request, rest: str = ""):
+        path = "/mcp" + (f"/{rest}" if rest else "")
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP}
+        upstream = _mcp_client.build_request(request.method, path, params=request.query_params,
+                                             headers=headers, content=await request.body())
+        r = await _mcp_client.send(upstream, stream=True)
+        out = {k: v for k, v in r.headers.items() if k.lower() not in _HOP}
+        return StreamingResponse(r.aiter_raw(), status_code=r.status_code, headers=out,
+                                 background=BackgroundTask(r.aclose))
+
+
 def _mount_chat() -> bool:
     """Brain's POST /chat router (agent/). Module name not fixed yet; try the likely ones."""
     import importlib
