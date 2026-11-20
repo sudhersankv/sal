@@ -182,3 +182,21 @@ def test_nhtsa_reads_seed_cache(monkeypatch, tmp_path):
 def test_modules_import_cleanly():
     for m in ["sie", "senso", "persona", "airbyte", "shopify", "cognee", "statsig_client", "amplitude", "nhtsa", "smoke"]:
         importlib.import_module(f"tools.integrations.{m}")
+
+
+def test_sie_reasoning_strip_and_json_parse():
+    from tools.integrations import sie
+
+    assert sie._strip_reasoning("<think>hmm</think>\n{\"a\": 1}") == '{"a": 1}'
+    assert sie._strip_reasoning("half</think>ok") == "ok"
+    assert sie._parse_json('```json\n{"lines": [1]}\n```') == {"lines": [1]}
+
+
+def test_sie_parse_statement_csv_offline():
+    from tools.integrations import sie
+
+    r = sie.parse_statement("seed/statements/bayshore_2026-11.csv")
+    assert r["method"] == "csv" and len(r["lines"]) == 25
+    zero_core = {ln["sku"] for ln in r["lines"] if ln["core_credit"] == 0 and ("STARTER" in ln["desc"] or "ALTERNATOR" in ln["desc"])}
+    assert zero_core == {"BSP101591", "BSP104218"}
+    assert r["total"] == 1494.30
