@@ -1,0 +1,63 @@
+sku,vendor_part_no,brand,oem_part_no,description,price,core_charge,qty_on_hand,eta_minutes
+MAS-00001,HON-15400PLMA02,Honda,15400-PLM-A02,"Honda 15400-PLM-A02 Engine oil filter, spin-on (Honda 1.5T/1.8L/2.0L/2.4L) | Fits 2014 Honda Civic 1.8L, 2019 Honda CR-V 1.5L",10.02,0.0,3,56
+MAS-00002,WIX-57356,WIX,15400-PLM-A02,"WIX 57356 Engine oil filter, spin-on (Honda 1.5T/1.8L/2.0L/2.4L) | Fits 2014 Honda Civic 1.8L, 2019 Honda CR-V 1.5L",9.52,0.0,2,61
+MAS-00006,WAG-QC1578,Wagner,45022-TR3-A02,"Wagner QC1578 Brake pad set, front, ceramic | Fits 2014 Honda Civic 1.8L",42.01,0.0,3,58
+MAS-00007,HON-45022TR3A02,Honda,45022-TR3-A02,"Honda 45022-TR3-A02 Brake pad set, front, ceramic | Fits 2014 Honda Civic 1.8L",44.77,0.0,2,63
+MAS-00012,BOS-50011470,Bosch,45251-TR0-A00,"Bosch 50011470 Brake rotor, front, vented | Fits 2014 Honda Civic 1.8L",60.51,0.0,3,58
+MAS-00013,WAG-BD126030E,Wagner,45251-TR0-A00,"Wagner BD126030E Brake rotor, front, vented | Fits 2014 Honda Civic 1.8L",58.21,0.0,2,63
+MAS-00018,HON-17220R1AA01,Honda,17220-R1A-A01,Honda 17220-R1A-A01 Engine air filter element | Fits 2014 Honda Civic 1.8L,15.88,0.0,3,70
+MAS-00021,HON-80292SDA407,Honda,80292-SDA-407,"Honda 80292-SDA-407 Cabin air filter (Honda, many models) | Fits 2014 Honda Civic 1.8L, 2019 Honda CR-V 1.5L",14.75,0.0,3,70
+MAS-00024,BOS-26A,Bosch,26A,"Bosch 26A Wiper blade 26 in, beam type, driver 26in | Fits 2014 Honda Civic 1.8L, 2018 Toyota Camry 2.5L, 2019 Honda CR-V 1.5L",15.68,0.0,3,63
+MAS-00027,BOS-22A,Bosch,22A,"Bosch 22A Wiper blade 22 in, beam type, passenger 22in | Fits 2014 Honda Civic 1.8L",15.68,0.0,3,63
+MAS-00030,BOS-20A,Bosch,20A,"Bosch 20A Wiper blade 20 in, beam type, passenger 20in | Fits 2018 Toyota Camry 2.5L",15.68,0.0,3,63
+MAS-00033,BOS-17A,Bosch,17A,"Bosch 17A Wiper blade 17 in, beam type, passenger 17in | Fits 2019 Honda CR-V 1.5L",15.68,0.0,3,63
+MAS-00036,MOT-GL8772,Motorcraft,FL3Z-10346-D,"Motorcraft GL-8772 Alternator, 240A, remanufactured | Fits 2016 Ford F-150 3.5L",260.0,45.0,3,63
+MAS-00037,REM-23050,Remy,FL3Z-10346-D,"Remy 23050 Alternator, 240A, remanufactured | Fits 2016 Ford F-150 3.5L",238.26,45.0,2,68
+MAS-00040,MOT-CK4Z11002C,Motorcraft,CK4Z-11002-C,"Motorcraft CK4Z-11002-C Starter motor, remanufactured | Fits 2016 Ford F-150 3.5L",181.44,45.0,3,63
+MAS-00041,REM-16198F,Remy,CK4Z-11002-C,"Remy 16198F Starter motor, remanufactured | Fits 2016 Ford F-150 3.5L",170.18,45.0,2,68
+MAS-00046,MOT-FL500S,Motorcraft,FL-500S,"Motorcraft FL-500S Engine oil filter, spin-on | Fits 2016 Ford F-150 3.5L",10.28,0.0,3,63
+MAS-00049,MOT-BRF1586,Motorcraft,HL3Z-2001-A,"Motorcraft BRF-1586 Brake pad set, front | Fits 2016 Ford F-150 3.5L",47.16,0.0,3,51
+MAS-00050,AKE-ACT1414,Akebono,HL3Z-2001-A,"Akebono ACT1414 Brake pad set, front | Fits 2016 Ford F-150 3.5L",49.53,0.0,2,56
+MAS-00055,GAT-K060930,Gates,BR3E-8620-AB,Gates K060930 Serpentine belt | Fits 2016 Ford F-150 3.5L,36.31,0.0,3,70
+MAS-00056,MOT-JK6930,Motorcraft,BR3E-8620-AB,Motorcraft JK6-930 Serpentine belt | Fits 2016 Ford F-150 3.5L,39.71,0.0,2,49
+MAS-00061,TOY-04152YZZA1,Toyota,04152-YZZA1,"Toyota 04152-YZZA1 Engine oil filter element, cartridge (with O-ring) | Fits 2018 Toyota Camry 2.5L",10.02,0.0,3,56
+MAS-00062,WIX-WL10332,WIX,04152-YZZA1,"WIX WL10332 Engine oil filter element, cartridge (with O-ring) | Fits 2018 Toyota Camry 2.5L",9.52,0.0,2,61
+MAS-00066,WAG-ZD2076,Wagner,04465-0E060,"Wagner ZD2076 Brake pad set, front, ceramic | Fits 2018 Toyota Camry 2.5L",42.01,0.0,3,58
+MAS-00067,TOY-044650E060,Toyota,04465-0E060,"Toyota 04465-0E060 Brake pad set, front, ceramic | Fits 2018 Toyota Camry 2.5L",44.77,0.0,2,63
+MAS-00072,TOY-28100F0060,Toyota,28100-F0060,"Toyota 28100-F0060 Starter motor, remanufactured | Fits 2018 Toyota Camry 2.5L",170.18,40.0,3,70
+MAS-00073,DEN-2800458,Denso,28100-F0060,"Denso 280-0458 Starter motor, remanufactured | Fits 2018 Toyota Camry 2.5L",172.37,40.0,2,49
+MAS-00078,DEN-1433611,Denso,17801-F0020,Denso 143-3611 Engine air filter element | Fits 2018 Toyota Camry 2.5L,15.88,0.0,3,70
+MAS-00079,BOS-5611WS,Bosch,17801-F0020,Bosch 5611WS Engine air filter element | Fits 2018 Toyota Camry 2.5L,16.09,0.0,2,49
+MAS-00083,DEN-4532004,Denso,87139-XU002,Denso 453-2004 Cabin air filter | Fits 2018 Toyota Camry 2.5L,15.13,0.0,3,58
+MAS-00084,BOS-6045C,Bosch,87139-XU002,Bosch 6045C Cabin air filter | Fits 2018 Toyota Camry 2.5L,15.32,0.0,2,63
+MAS-00088,REM-16198,Remy,23300-3TA0A,"Remy 16198 Starter motor, remanufactured | Fits 2015 Nissan Altima 2.5L",170.18,40.0,3,70
+MAS-00089,NIS-2330M3TA0CRW,Nissan,23300-3TA0A,"Nissan 2330M-3TA0CRW Starter motor, remanufactured | Fits 2015 Nissan Altima 2.5L",172.37,40.0,2,49
+MAS-00094,DEN-2104003,Denso,23100-3TA1A,"Denso 210-4003 Alternator, 110A, remanufactured | Fits 2015 Nissan Altima 2.5L",238.26,45.0,3,70
+MAS-00097,DEN-6734028,Denso,22448-1KT1A,Denso 673-4028 Ignition coil (coil-on-plug) | Fits 2015 Nissan Altima 2.5L,55.16,0.0,3,51
+MAS-00100,AKE-ACT1650,Akebono,D1060-3TA0A,"Akebono ACT1650 Brake pad set, front, ceramic | Fits 2015 Nissan Altima 2.5L",49.53,0.0,3,58
+MAS-00101,WAG-QC1650,Wagner,D1060-3TA0A,"Wagner QC1650 Brake pad set, front, ceramic | Fits 2015 Nissan Altima 2.5L",42.53,0.0,2,63
+MAS-00106,NIS-1520865F0E,Nissan,15208-65F0E,"Nissan 15208-65F0E Engine oil filter, spin-on | Fits 2015 Nissan Altima 2.5L",10.02,0.0,3,56
+MAS-00107,BOS-3311,Bosch,15208-65F0E,"Bosch 3311 Engine oil filter, spin-on | Fits 2015 Nissan Altima 2.5L",9.52,0.0,2,61
+MAS-00111,ACD-84143543,ACDelco,84143543,"ACDelco 84143543 Alternator, 150A, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",245.41,45.0,3,70
+MAS-00112,DEN-2105390,Denso,84143543,"Denso 210-5390 Alternator, 150A, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",241.32,45.0,2,49
+MAS-00117,ACD-12695760,ACDelco,12695760,"ACDelco 12695760 Starter motor, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",175.29,45.0,3,70
+MAS-00118,BOS-SR8580X,Bosch,12695760,"Bosch SR8580X Starter motor, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",172.37,45.0,2,49
+MAS-00123,GAT-K060714,Gates,12626076,Gates K060714 Serpentine belt | Fits 2017 Chevrolet Silverado 1500 5.3L,36.77,0.0,3,51
+MAS-00126,ACD-PF63,ACDelco,PF63,"ACDelco PF63 Engine oil filter, spin-on | Fits 2017 Chevrolet Silverado 1500 5.3L",10.19,0.0,3,49
+MAS-00129,ACD-1722701,ACDelco,84320931,"ACDelco 172-2701 Brake caliper, front left, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",69.52,20.0,3,58
+MAS-00130,WAG-TQM24046,Wagner,84320931,"Wagner TQM24046 Brake caliper, front left, remanufactured | Fits 2017 Chevrolet Silverado 1500 5.3L",64.92,20.0,2,63
+MAS-00135,MOO-ES801233,Moog,84173385,"Moog ES801233 Tie rod end, outer, front outer | Fits 2017 Chevrolet Silverado 1500 5.3L",40.89,0.0,3,70
+MAS-00136,ACD-45A1430,ACDelco,84173385,"ACDelco 45A1430 Tie rod end, outer, front outer | Fits 2017 Chevrolet Silverado 1500 5.3L",40.24,0.0,2,49
+MAS-00141,HON-172205AAA00,Honda,17220-5AA-A00,Honda 17220-5AA-A00 Engine air filter element | Fits 2019 Honda CR-V 1.5L,15.88,0.0,3,70
+MAS-00142,WIX-WA10417,WIX,17220-5AA-A00,WIX WA10417 Engine air filter element | Fits 2019 Honda CR-V 1.5L,16.09,0.0,2,49
+MAS-00146,AKE-ACT1089A,Akebono,45022-TLA-A01,"Akebono ACT1089A Brake pad set, front, ceramic | Fits 2019 Honda CR-V 1.5L",49.53,0.0,3,58
+MAS-00147,WAG-QC1089A,Wagner,45022-TLA-A01,"Wagner QC1089A Brake pad set, front, ceramic | Fits 2019 Honda CR-V 1.5L",42.53,0.0,2,63
+MAS-00152,CRC-05089,CRC,05089,"CRC 05089 Brakleen brake parts cleaner, non-flammable, 19 oz aerosol",3.92,0.0,3,63
+MAS-00155,HON-082009008,Honda,08200-9008,"Honda 08200-9008 Honda ATF DW-1 automatic transmission fluid, 1 qt | Fits 2014 Honda Civic 1.8L",11.19,0.0,3,56
+MAS-00158,HON-OL9999011,Honda,OL999-9011,"Honda OL999-9011 Honda Type 2 long-life coolant, premixed, 1 gal | Fits 2014 Honda Civic 1.8L, 2019 Honda CR-V 1.5L",23.52,0.0,3,63
+MAS-00161,TOY-002721LLAC,Toyota,00272-1LLAC,"Toyota 00272-1LLAC Toyota Super Long Life coolant, premixed, 1 gal | Fits 2018 Toyota Camry 2.5L",23.52,0.0,3,63
+MAS-00164,BOS-9005ST,Bosch,9005,"Bosch 9005ST Halogen headlight bulb 9005 (HB3), headlight high | Fits 2014 Honda Civic 1.8L, 2018 Toyota Camry 2.5L",10.21,0.0,3,70
+MAS-00167,BOS-7443,Bosch,7443,"Bosch 7443 Miniature bulb 7443 (tail/stop) | Fits 2015 Nissan Altima 2.5L, 2016 Ford F-150 3.5L",10.21,0.0,3,70
+MAS-00170,DEN-2344979,Denso,36532-R1B-A01,"Denso 234-4979 Oxygen sensor, downstream (bank 1 sensor 2, after catalytic converter) | Fits 2014 Honda Civic 1.8L",41.0,0.0,2,68
+MAS-00171,NGK-24134,NTK,36532-R1B-A01,"NTK 24134 Oxygen sensor, downstream (bank 1 sensor 2, after catalytic converter) | Fits 2014 Honda Civic 1.8L",47.5,0.0,1,68
+MAS-00172,BOS-15009,Bosch,36532-R1B-A01,"Bosch 15009 Oxygen sensor, downstream (bank 1 sensor 2, after catalytic converter) | Fits 2014 Honda Civic 1.8L",44.25,0.0,1,68
