@@ -99,12 +99,11 @@ def _num(v, default=0.0) -> float:
         return default
 
 
-def _catalog_row(vendor_id: str | None, sku: str) -> dict | None:
-    if vendor_id:
-        rows, _ = data.query("SELECT * FROM vendor_catalog WHERE vendor_id = %s AND sku = %s", (vendor_id, sku))
-    else:
-        rows, _ = data.query("SELECT * FROM vendor_catalog WHERE sku = %s OR shopify_variant_id = %s", (sku, sku))
-    return rows[0] if rows else None
+def _catalog_row(vendor_id: str | None, ident: str) -> dict | None:
+    """Accepts sku, vendor_part_no, Shopify variant id or an unambiguous OEM no. (see vendors.catalog.resolve).
+    May return {"error": ...} for an ambiguous OEM number."""
+    from vendors.catalog import resolve
+    return resolve(vendor_id, ident)
 
 
 def _part_by_oem(oem: str) -> dict | None:
@@ -467,8 +466,11 @@ def _part_type_for(row: dict) -> str:
 def place_counter_order(vendor_id: str, sku: str, qty: int, ro_id: str, approval_id: str | None = None) -> dict:
     """Order from a local counter vendor. Policy guard applies (no-buy, spend cap w/ verified owner, routing)."""
     row = _catalog_row(vendor_id, sku)
+    if row and "error" in row:
+        return row
     if not row:
-        return err("unknown_sku", f"{vendor_id} has no sku {sku}")
+        return err("unknown_sku", f"{vendor_id} has no part {sku}; pass the sku from search_vendor")
+    sku = row["sku"]
     qty = int(qty or 1)
     price = _num(row["price"])
     total = round(price * qty, 2)
@@ -497,34 +499,50 @@ def place_shopify_order(lines: list[dict], note: str = "", approval_id: str | No
     resolved, plines = [], []
     for item in lines or []:
         key = item.get("variant_id") or item.get("sku") or ""
-        row = _catalog_row(None, key) or _catalog_row("partsdepot", key)
+        row = _catalog_row("partsdepot", key) or _catalog_row(None, key)
+        if row and "error" in row:
+            return row
         if not row:
-            return err("unknown_variant", f"no catalog row for {key}")
+            return err("unknown_variant", f"no PartsDepot catalog row for {key}")
         qty = int(item.get("qty") or 1)
-        resolved.append({"variant_id": row.get("shopify_variant_id") or key, "sku": row["sku"], "qty": qty,
-                         "price": _num(row["price"])})
+        resolved.append({"variant_id": row.get("shopify_variant_id") or row["sku"], "sku": row["sku"], "qty": qty,
+                         "price": _num(row["price"]), "eta_minutes": int(_num(row.get("eta_minutes"), 2880))})
         plines.append(policy.Line(sku=row["sku"], brand=row.get("brand", ""), part_type=_part_type_for(row),
                                   qty=qty, unit_price=_num(row["price"])))
     total = round(sum(r["price"] * r["qty"] for r in resolved), 2)
     esc = policy.guard("partsdepot", plines, total, approval_id)
     if esc:
         return esc
-    shop_lines = [{"variant_id": r["variant_id"], "qty": r["qty"]} for r in resolved]
-    res = backends.call("shopify", ("place_order",), shop_lines, note)
-    if isinstance(res, dict) and res.get("shopify_order_id"):
-        live = res.get("source") == "live"
+    # ETA always from the SIMULATED shop clock (2-day ground for PartsDepot), never a vendor/Shopify clock.
+    eta = context.plus_minutes(max([r["eta_minutes"] for r in resolved] or [2880]) or 2880)
+    res = None
+    if backends.call("shopify", ("available",)):
+        res = backends.call("shopify", ("place_order",), [{"variant_id": r["variant_id"], "qty": r["qty"]}
+                                                          for r in resolved], note)
+    if isinstance(res, dict) and res.get("shopify_order_id") and res.get("source") == "live":
         out = {"shopify_order_id": res["shopify_order_id"], "admin_url": res.get("admin_url", ""),
-               "total": _num(res.get("total"), total), "channel": "shopify" if live else "mock-online",
-               "eta": res.get("eta") or context.plus_minutes(2880)}
-        src = ({"name": "Shopify", "ref": out["shopify_order_id"], "url": out["admin_url"]} if live
-               else {"name": "Vendor", "ref": out["shopify_order_id"]})
-    else:
-        from vendors.catalog import place_many
-        mock = place_many("partsdepot", [(r["sku"], r["qty"]) for r in resolved], None, sim_ts=context.ts())
-        out = {"shopify_order_id": mock["order_id"], "admin_url": f"{VENDOR_URL}/v/partsdepot/orders",
-               "total": mock["total"], "channel": "mock-online", "eta": mock["eta"]}
+               "total": _num(res.get("total"), total), "channel": "shopify", "eta": eta}
+        src = {"name": "Shopify", "ref": out["shopify_order_id"], "url": out["admin_url"]}
+    else:  # mock online store, told the sim clock so its own order record agrees
+        mock = None
+        if _mock_up():
+            try:
+                import httpx
+                r = httpx.post(f"{VENDOR_URL}/v/partsdepot/orders", timeout=5, json={
+                    "lines": [{"sku": x["sku"], "qty": x["qty"]} for x in resolved], "note": note,
+                    "run_id": context.run_id(), "sim_ts": context.ts()})
+                mock = r.json() if r.status_code == 200 else None
+            except Exception:
+                mock = None
+        if not mock:
+            from vendors.catalog import place_many
+            mock = place_many("partsdepot", [(r["sku"], r["qty"]) for r in resolved], None, sim_ts=context.ts())
+            if "error" in mock:
+                return mock
+        out = {"shopify_order_id": mock["order_id"], "admin_url": f"{VENDOR_URL}/v/partsdepot/orders?format=html",
+               "total": _num(mock.get("total"), total), "channel": "mock-online", "eta": eta}
         src = {"name": "Vendor", "ref": mock["order_id"]}
-    _record_order(out["shopify_order_id"], "partsdepot", None, out["total"], context.plus_minutes(2880),
+    _record_order(out["shopify_order_id"], "partsdepot", None, out["total"], eta,
                   out["channel"], out["shopify_order_id"], plines)
     n = sum(r["qty"] for r in resolved)
     events.emit("order.placed", f"Restock: {n} items on PartsDepot Online ${out['total']:.2f} ({out['channel']})",

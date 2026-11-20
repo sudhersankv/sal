@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 from datetime import datetime, timedelta
 
@@ -39,9 +40,45 @@ def search(vendor_id: str, oem: str) -> list[dict]:
     return out
 
 
+def _alnum(v) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+
+
+def resolve(vendor_id: str | None, ident: str) -> dict | None:
+    """Catalog row for whatever identifier a caller has: sku, vendor_part_no, Shopify variant id, or (if it
+    names exactly one in-stock listing at the vendor) the OEM number. Case/punctuation-insensitive.
+    Returns {"error": ...} when an OEM number is ambiguous so the caller can ask for a sku."""
+    ident = str(ident or "").strip()
+    if not ident:
+        return None
+    where, params = ("vendor_id = %s", [vendor_id]) if vendor_id else ("1 = 1", [])
+    rows, _ = data.query(f"SELECT * FROM vendor_catalog WHERE {where} AND (sku = %s OR vendor_part_no = %s OR "
+                         "shopify_variant_id = %s)", (*params, ident, ident, ident))
+    if rows:
+        return rows[0]
+    key = _alnum(ident)
+    allrows, _ = data.query(f"SELECT * FROM vendor_catalog WHERE {where}", tuple(params))
+    for col in ("sku", "vendor_part_no", "shopify_variant_id"):
+        hit = [r for r in allrows if key and _alnum(r.get(col)) == key]
+        if hit:
+            return hit[0]
+    # brand part no. inside vendor_part_no (e.g. "GL-8772" vs "MOT-GL8772")
+    hit = [r for r in allrows if len(key) >= 4 and _alnum(r.get("vendor_part_no")).endswith(key)]
+    if len(hit) == 1:
+        return hit[0]
+    oem = [r for r in allrows if _alnum(r.get("oem_part_no")) == key]
+    if len(oem) == 1:
+        return oem[0]
+    if len(oem) > 1:
+        opts = ", ".join(f"{r['sku']} ({r['brand']} ${float(r['price']):.2f})" for r in oem)
+        return {"error": {"code": "ambiguous_part", "message": f"{ident} matches {len(oem)} listings at "
+                          f"{vendor_id}: {opts}. Pass the sku."}}
+    return None
+
+
 def _row(vendor_id: str, sku: str) -> dict | None:
-    rows, _ = data.query("SELECT * FROM vendor_catalog WHERE vendor_id = %s AND sku = %s", (vendor_id, sku))
-    return rows[0] if rows else None
+    r = resolve(vendor_id, sku)
+    return r if r and "error" not in r else None
 
 
 def _order_id(vendor_id: str, key: str) -> str:
@@ -54,19 +91,42 @@ def _order_id(vendor_id: str, key: str) -> str:
     return f"{PREFIX.get(vendor_id, vendor_id[:3].upper())}-{n:04d}{h}"
 
 
+def shop_now(run_id: str | None = None) -> datetime:
+    """Simulated shop clock for callers that don't send sim_ts: the run's (or newest run's) last event ts,
+    else env SAL_SIM_TS / context default. Never the mock process's own idea of 'now'."""
+    import os
+    if os.environ.get("SAL_SIM_TS") or not run_id and os.environ.get("SAL_RUN_ID"):
+        return context.now()
+    try:
+        root = context.runs_dir()
+        cands = [root / run_id / "events.jsonl"] if run_id else sorted(
+            root.glob("*/events.jsonl"), key=lambda q: q.stat().st_mtime, reverse=True)[:1]
+        for f in cands:
+            if f.exists():
+                last = f.read_text(encoding="utf-8").strip().splitlines()[-1]
+                return datetime.fromisoformat(json.loads(last)["ts"])
+    except Exception:
+        pass
+    return context.now()
+
+
 def place_many(vendor_id: str, items: list[tuple[str, int]], ro_id: str | None, sim_ts: str | None = None,
                run_id: str | None = None) -> dict:
     lines, total, eta_min = [], 0.0, 0
-    for sku, qty in items:
-        r = _row(vendor_id, sku)
+    for ident, qty in items:
+        r = resolve(vendor_id, ident)
+        if r and "error" in r:
+            return r
         if not r:
-            return {"error": {"code": "unknown_sku", "message": f"{vendor_id} has no sku {sku}"}}
+            return {"error": {"code": "unknown_sku", "message": f"{vendor_id} has no part {ident} (pass the sku "
+                              "from search_vendor)"}}
+        sku = r["sku"]
         if int(r["qty_on_hand"] or 0) < qty:
             return {"error": {"code": "out_of_stock", "message": f"{vendor_id} has {r['qty_on_hand']} of {sku}"}}
         lines.append({"sku": sku, "qty": qty, "unit_price": float(r["price"]), "brand": r["brand"]})
         total += float(r["price"]) * qty
         eta_min = max(eta_min, int(r["eta_minutes"] or 0))
-    base = datetime.fromisoformat(sim_ts) if sim_ts else context.now()
+    base = datetime.fromisoformat(sim_ts) if sim_ts else shop_now(run_id)
     order = {"order_id": _order_id(vendor_id, json.dumps(items) + str(ro_id)), "vendor_id": vendor_id,
              "ro_id": ro_id, "lines": lines, "total": round(total, 2),
              "placed_at": base.isoformat(), "eta": (base + timedelta(minutes=eta_min)).isoformat(),
