@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv
+**/node_modules
+ui/web/dist
+**/__pycache__
+.git
+runs/*
+!runs/demo/
+seed/cache/sie
+firedrill/build
