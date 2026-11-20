@@ -89,9 +89,26 @@ def test_analytics_noop_without_key(monkeypatch):
     t.tool_call("decode_vin", {}, {}, 1.0, True)
     t.custom("sal_order_placed", {})
     t.end(sal.RunResult(run_id="r5", day="mon", variant="off"))
-    assert t._http == []
+    assert t.session is None
 
 
 def test_cli_rejects_bad_day():
     with pytest.raises(SystemExit):
         sal.main(["--day", "xyz"])
+
+
+def test_normalize_variant_from_sim_dict():
+    v = {"name": "on", "gate_routing_v2": True, "sal_vendor_routing_v2": True,
+         "sal_policy": {"strategy": "rules_aware"}}
+    name, env = sal.normalize_variant(v)
+    assert name == "on" and env == {"SAL_GATE_ROUTING_V2": "1", "SAL_POLICY_STRATEGY": "rules_aware"}
+    o = sal.build_options("sun", "w1", "2026-11-22T18:00:00-08:00", v)
+    assert o.mcp_servers["sal-tools"]["env"]["SAL_GATE_ROUTING_V2"] == "1"
+    assert "sal_vendor_routing_v2: ON" in o.system_prompt
+    assert sal.normalize_variant("off")[0] == "off"
+
+
+def test_result_is_sim_readable():
+    r = sal.RunResult(run_id="w", day="sun", variant="on", ok=True, orders=["ORD-1"], rule_id="RULE-1")
+    d = dict(r.__dict__)
+    assert d["ok"] and d["orders"] == ["ORD-1"] and d["rule_id"] == "RULE-1"
