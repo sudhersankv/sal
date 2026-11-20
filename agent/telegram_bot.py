@@ -1,11 +1,10 @@
-"""Sal staff chat on Telegram (T3 B6). `python -m agent.telegram_bot`
+"""Sal staff chat on Telegram (T3 B6, D-010). `python -m agent.telegram_bot`
 
-- A tech's free-text message becomes a trigger: repair_order.created (actor tech) is emitted, then
-  run_day(...) runs in a background thread. Prefix `/tue ` (or any `/<day> `) to pick another day; default mon.
-- Sal's key events (part chosen, order placed, escalations, final summary) are posted back to the chat by
-  tailing runs/<run_id>/events.jsonl.
-- Escalations needing the owner get Approve/Decline buttons -> POST {SIM_API}/sim/approve. A Persona
-  verify_owner hosted_url, if present, is sent as a link in the same message.
+- Every message goes to Sal's chat mode (agent.chat.run_chat): Sal works out what's wanted and does it. A typing
+  indicator shows while he works; one clean reply comes back. If the owner's OK is needed, the reply carries
+  Approve/Decline buttons; a tap goes back to Sal as the owner's answer.
+- Hidden demo commands: /mon /tue /wed /fri /sun run that sim day and stream key events (old B6 behaviour);
+  their escalation buttons POST {SIM_API}/sim/approve, with a Persona hosted_url link if present.
 
 Long-polls getUpdates with httpx. The bot token is read from TELEGRAM_BOT_TOKEN and never logged.
 """
@@ -27,9 +26,12 @@ from agent import sal
 SIM_API = os.getenv("SIM_API_URL", "http://localhost:8102")
 POLL_TIMEOUT = 30
 DAY_CMD = re.compile(r"^/(mon|tue|wed|thu|fri|sat|sun)\b\s*", re.I)
-HELP = ("Sal here. Parts guy. Tell me what's on the lift, e.g.\n"
-        "Civic in bay 2, P0141, VIN 19XFB2F58EE200123, promised by 3 PM\n"
-        "Prefix /tue, /wed, /fri or /sun to run that day's job instead.")
+HELP = ("Sal here. Parts. Text me like you'd text your parts guy:\n"
+        "- Civic in bay 2, P0141, VIN ..., promised by 3 PM\n"
+        "- are we low on anything for next week?\n"
+        "- who's been late on alternators?")
+
+APPROVE_BUTTONS = [[{"text": "Approve", "callback_data": "ok|1"}, {"text": "Decline", "callback_data": "ok|0"}]]
 
 logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx INFO logs full URLs (token in path)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -90,15 +92,54 @@ class Bot:
             self.send(chat_id, HELP)
             return
         if chat_id in self.busy:
-            self.send(chat_id, f"Still on {self.busy[chat_id]}. One job at a time.")
+            self.send(chat_id, "One sec, still on your last one.")
             return
-        day = "mon"
-        if (mt := DAY_CMD.match(text)):
+        if (mt := DAY_CMD.match(text)):  # hidden demo commands
             day, text = mt.group(1).lower(), text[mt.end():].strip()
-        threading.Thread(target=self.job, args=(chat_id, day, text, m.get("from") or {}), daemon=True).start()
+            threading.Thread(target=self.job, args=(chat_id, day, text, m.get("from") or {}), daemon=True).start()
+            return
+        threading.Thread(target=self.chat, args=(chat_id, text), daemon=True).start()
+
+    # ------------------------------------------------------------ chat mode
+    def chat(self, chat_id: int, text: str, actor: str = "owner") -> None:
+        self.busy[chat_id] = "chat"
+        stop = threading.Event()
+
+        def typing() -> None:
+            while not stop.is_set():
+                self.call("sendChatAction", chat_id=chat_id, action="typing")
+                stop.wait(4.0)
+
+        threading.Thread(target=typing, daemon=True).start()
+        try:
+            from agent.chat import run_chat
+
+            r = run_chat(chat_id, text, actor=actor)
+            stop.set()
+            if r.needs_owner:
+                self.send(chat_id, f"{r.text}\n\nNeeds your OK: {r.needs_owner}", APPROVE_BUTTONS)
+            else:
+                self.send(chat_id, r.text)
+        except Exception as e:  # noqa: BLE001
+            stop.set()
+            self.send(chat_id, "Hit a snag on that one. Try me again in a minute.")
+            log(f"chat failed: {type(e).__name__}: {self._scrub(e)}")
+        finally:
+            stop.set()
+            self.busy.pop(chat_id, None)
 
     def on_callback(self, q: dict) -> None:
         parts = (q.get("data") or "").split("|")
+        msg = q.get("message") or {}
+        if len(parts) == 2 and parts[0] == "ok" and msg:  # chat mode: the owner's answer goes back to Sal
+            chat_id, yes = msg["chat"]["id"], parts[1] == "1"
+            self.call("answerCallbackQuery", callback_query_id=q["id"], text="Approved." if yes else "Declined.")
+            self.call("editMessageReplyMarkup", chat_id=chat_id, message_id=msg["message_id"],
+                      reply_markup={"inline_keyboard": []})
+            if chat_id not in self.busy:
+                answer = "Approved, go ahead." if yes else "Declined. Don't order it."
+                threading.Thread(target=self.chat, args=(chat_id, answer), daemon=True).start()
+            return
         if len(parts) != 4 or parts[0] != "ap":
             return
         _, kind, ap_id, yes = parts
@@ -113,7 +154,6 @@ class Bot:
         verdict = "Approved" if approved else "Declined"
         self.call("answerCallbackQuery", callback_query_id=q["id"],
                   text=f"{verdict}." if ok else "Sim didn't take it. Is sim.api up on :8102?")
-        msg = q.get("message") or {}
         if ok and msg:
             who = (q.get("from") or {}).get("first_name", "owner")
             self.call("editMessageReplyMarkup", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
@@ -137,7 +177,7 @@ class Bot:
                            data={"channel": "telegram", "from": sender.get("first_name")})
             elif not text:
                 trigger = sal.DEFAULT_TRIGGERS.get(day) or None
-            self.send(chat_id, f"On it. {ro if day in ('mon', 'tue') else day.upper()} (run {run_id}).")
+            self.send(chat_id, "On it.")
             variant = os.getenv("SAL_VARIANT", "off")
             box: dict[str, Any] = {}
             t = threading.Thread(target=lambda: box.update(res=sal.run_day(day, trigger, variant, run_id, sim_ts)),
