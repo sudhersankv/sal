@@ -22,7 +22,7 @@ def _src(name: str, ref: str | None = None) -> dict:
 def run_day(day: str, trigger: dict, variant: Any, run_id: str, sim_ts: str) -> dict:
     clock = SimClock(day, datetime.fromisoformat(sim_ts))
     e = Emitter(run_id, clock)
-    gate_on = bool(variant.get("gate_routing_v2")) if isinstance(variant, dict) else False
+    gate_on = variant == "on" or (isinstance(variant, dict) and bool(variant.get("gate_routing_v2")))
     fn = {"mon": _mon, "tue": _tue, "wed": _wed, "fri": _fri, "sun": _sun}[day]
     out = fn(e, trigger, gate_on)
     return {"day": day, "run_id": run_id, "ok": True, "stub": True, "end_ts": clock.iso(), **out}

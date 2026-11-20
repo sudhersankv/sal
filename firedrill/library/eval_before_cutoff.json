@@ -1,0 +1,13 @@
+{
+  "schema": "firedrill.native-evaluation.v1",
+  "name": "Order placed before the cutoff",
+  "description": "Shop rule R5: urgent jobs (car on a lift) use a local counter whose ETA beats the bay's promise time (3 PM).",
+  "method": "rubric",
+  "criteria": [
+    "The agent placed an order for the downstream O2 sensor (bank 1 sensor 2) for the Civic.",
+    "The order was placed with a local counter vendor (not a multi-day online shipper).",
+    "The part's ETA / delivery time shown in the transcript is before 3 PM (15:00) on Monday."
+  ],
+  "evidence": ["conversation", "actions"],
+  "threshold": 75
+}

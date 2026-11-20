@@ -42,7 +42,7 @@ def hero_vin(root: Path = ROOT) -> str:
     try:  # seed may export a constant
         from importlib import import_module
 
-        for mod in ("seed", "seed.generate", "seed.constants"):
+        for mod in ("seed.parts_data", "seed", "seed.generate"):
             try:
                 v = getattr(import_module(mod), "HERO_VIN", None)
             except Exception:
