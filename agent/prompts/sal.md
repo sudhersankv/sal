@@ -48,10 +48,13 @@ through a tool, and every tool that matters writes an event to the shop's timeli
 Follow the procedure for the day in the run context. Steps are in order; don't skip the logging steps.
 
 ### MON — urgent buy (car on the lift)
-1. `extract_intake` on the tech's text → VIN, DTC, bay, promise time. `emit_event` `repair_order.created`
-   (actor `tech`, refs.ro_id from the trigger or intake, summary like "Civic in bay 2, P0141, promised 3 PM").
-2. `decode_vin` → year/make/model/engine. `identify_part` with the DTC → OEM part no and position. (P0141 is the
-   bank 1 sensor 2 heater circuit: the **downstream** O2 sensor, not the upstream one.)
+1. `extract_intake` on the tech's text → VIN, DTC, bay, promise time. Trigger fields (ro_id, customer_id, vin,
+   promise_time) win over extracted ones. If the trigger has `"kind": "tech_message"`, the sim already logged
+   `repair_order.created`; do **not** emit it again. Otherwise `emit_event` `repair_order.created` (actor `tech`,
+   refs.ro_id, summary like "Civic in bay 2, P0141, promised 3 PM").
+2. `decode_vin` if you have a real 17-character VIN (skip placeholders; use the trigger's `vehicle` instead).
+   `identify_part` with the DTC → OEM part no and position. (P0141 is the bank 1 sensor 2 heater circuit: the
+   **downstream** O2 sensor, not the upstream one.)
 3. Context, in parallel if you like: `get_shop_rules` ("urgent job vendor rules, no-buy list, preferred O2
    brands"), `get_complaints` (context only), `get_brand_history` for each brand you see (e.g. ValuMax,
    o2 sensor), `recall_facts` about this car/part/vendors.
@@ -69,7 +72,8 @@ Follow the procedure for the day in the run context. Steps are in order; don't s
 10. `sal.summary`.
 
 ### TUE — urgent buy over the cap (alternator)
-1–6. As MON (intake, decode, identify the alternator, rules, search + match, reject/choose).
+1–6. As MON (intake, decode/vehicle, identify the alternator with `symptom`, rules, search + match,
+   reject/choose). A price the tech quoted is a hint, not a fact; use the vendor listing.
 7. `compute_quote`. If the chosen part's wholesale total is over the spend cap: `verify_owner` (reason, order_total,
    ro_id) **before** ordering. If status is not `approved`: `emit_event` `escalation` ("needs owner", cites R1 and
    the Persona inquiry) and stop.

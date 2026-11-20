@@ -84,6 +84,8 @@ class RunResult:
     escalations: int = 0
     emitted_types: list[str] = field(default_factory=list)  # types Sal sent via emit_event
     summary_emitted_by: str = ""  # "sal" | "runner"
+    orders: list[str] = field(default_factory=list)  # order ids placed (counter or Shopify)
+    rule_id: str | None = None  # from propose_rule (SUN)
     error: str | None = None
 
     def to_json(self) -> str:
@@ -93,12 +95,39 @@ class RunResult:
 # ---------------------------------------------------------------- prompt / config
 
 
-def build_system_prompt(day: str, run_id: str, sim_ts: str, variant: str) -> str:
+GATE = "sal_vendor_routing_v2"
+
+
+def normalize_variant(variant: str | dict | None) -> tuple[str, dict[str, str]]:
+    """Sim passes a Statsig variant dict ({name, sal_vendor_routing_v2, sal_policy:{strategy}}) or a name.
+
+    Returns (name, extra tool env)."""
+    if not isinstance(variant, dict):
+        name = str(variant or os.getenv("SAL_VARIANT") or "off")
+        return name, {k: os.environ[k] for k in ("SAL_GATE_ROUTING_V2", "SAL_POLICY_STRATEGY") if os.getenv(k)}
+    name = str(variant.get("name") or variant.get("variant") or "off")
+    env: dict[str, str] = {}
+    gate = variant.get(GATE, variant.get("gate_routing_v2"))
+    if gate is not None:
+        env["SAL_GATE_ROUTING_V2"] = "1" if gate else "0"
+    cfg = variant.get("sal_policy")
+    strategy = (cfg.get("strategy") if isinstance(cfg, dict) else None) or variant.get("strategy")
+    if strategy:
+        env["SAL_POLICY_STRATEGY"] = str(strategy)
+    return name, env
+
+
+def build_system_prompt(day: str, run_id: str, sim_ts: str, variant: str,
+                        extra: dict[str, str] | None = None) -> str:
     base = PROMPT_PATH.read_text(encoding="utf-8")
+    extra = extra or {}
+    gate_on = extra.get("SAL_GATE_ROUTING_V2") == "1"
     ctx = (
         "\n\n## Run context (set by the sim; do not change)\n"
         f"- day: {day}\n- run_id: {run_id}\n- shop time now: {sim_ts}\n"
         f"- policy variant (Statsig arm, chosen by sim): {variant}\n"
+        f"- routing gate {GATE}: {'ON' if gate_on else 'OFF'}\n"
+        f"- sal_policy.strategy: {extra.get('SAL_POLICY_STRATEGY', 'rules_aware')}\n"
         f"- spend cap: ${os.getenv('SPEND_CAP', '200')}\n"
         "- user_id: shop-001 (Mission Street Auto)\n"
     )
@@ -112,8 +141,10 @@ def build_user_prompt(day: str, trigger: dict | None, sim_ts: str) -> str:
     return head + "\nTrigger:\n" + json.dumps(trigger, indent=2)
 
 
-def tool_env(day: str, run_id: str, sim_ts: str, variant: str) -> dict[str, str]:
+def tool_env(day: str, run_id: str, sim_ts: str, variant: str,
+             extra: dict[str, str] | None = None) -> dict[str, str]:
     env = {
+        **(extra or {}),
         "SAL_RUN_ID": run_id,
         "SAL_DAY": day,
         "SAL_SIM_TS": sim_ts,
@@ -144,12 +175,13 @@ def mcp_server_config(env: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def build_options(day: str, run_id: str, sim_ts: str, variant: str, max_turns: int | None = None):
+def build_options(day: str, run_id: str, sim_ts: str, variant: str | dict, max_turns: int | None = None):
     from claude_agent_sdk import ClaudeAgentOptions
 
-    env = tool_env(day, run_id, sim_ts, variant)
+    name, extra = normalize_variant(variant)
+    env = tool_env(day, run_id, sim_ts, name, extra)
     return ClaudeAgentOptions(
-        system_prompt=build_system_prompt(day, run_id, sim_ts, variant),
+        system_prompt=build_system_prompt(day, run_id, sim_ts, name, extra),
         model=os.getenv("SAL_MODEL") or DEFAULT_MODEL,
         tools=[],  # no built-in Claude Code tools (no Bash, no filesystem)
         mcp_servers=mcp_server_config(env),
@@ -258,7 +290,7 @@ def emit_direct(event: dict) -> bool:
 async def run_day_async(
     day: str,
     trigger: dict | None = None,
-    variant: str = "off",
+    variant: str | dict = "off",
     run_id: str | None = None,
     sim_ts: str | None = None,
     max_turns: int | None = None,
@@ -278,8 +310,9 @@ async def run_day_async(
     load_env()
     run_id = run_id or f"{day}-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
     sim_ts = sim_ts or DEFAULT_SIM_TS[day]
-    res = RunResult(run_id=run_id, day=day, variant=variant)
     options = build_options(day, run_id, sim_ts, variant, max_turns)
+    variant, extra_env = normalize_variant(variant)
+    res = RunResult(run_id=run_id, day=day, variant=variant)
     prompt = build_user_prompt(day, trigger, sim_ts)
     model = options.model or DEFAULT_MODEL
 
@@ -320,6 +353,12 @@ async def run_day_async(
                         print(f"[sal] !! {name} error: {str(parsed)[:200]}", flush=True)
                     if esc:
                         res.escalations += 1
+                    elif not err and isinstance(parsed, dict):
+                        oid = parsed.get("order_id") or parsed.get("shopify_order_id")
+                        if name.startswith("place_") and oid:
+                            res.orders.append(str(oid))
+                        if name == "propose_rule" and parsed.get("rule_id"):
+                            res.rule_id = str(parsed["rule_id"])
                     tracker.tool_call(name, inp, parsed, (time.monotonic() - ts) * 1000, not err)
                     if esc:
                         tracker.custom("sal_escalation", {"tool": name})
@@ -349,7 +388,7 @@ async def run_day_async(
             res.summary_emitted_by = "sal"
         else:
             ev = fallback_summary_event(day, run_id, sim_ts, variant, res.summary, res)
-            env = tool_env(day, run_id, sim_ts, variant)
+            env = tool_env(day, run_id, sim_ts, variant, extra_env)
             if await emit_via_tools(ev, env) or emit_direct(ev):
                 res.summary_emitted_by = "runner"
         tracker.end(res)
@@ -359,7 +398,7 @@ async def run_day_async(
 def run_day(
     day: str,
     trigger: dict | None = None,
-    variant: str = "off",
+    variant: str | dict = "off",
     run_id: str | None = None,
     sim_ts: str | None = None,
     max_turns: int | None = None,
