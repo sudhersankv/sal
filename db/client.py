@@ -315,3 +315,28 @@ def executemany(sql: str, seq) -> int:
 
 def vector_search(qvec, k=5, where=None, params=None, **kw) -> list[dict]:
     return get_db().vector_search(qvec, k=k, where=where, params=params, **kw)
+
+
+# ---- facts (Cognee fallback; used by tools/integrations/cognee.py) ----
+def add_fact(text: str, tags: list[str] | None = None, source: str = "sal") -> str:
+    import hashlib
+
+    db = get_db()
+    fid = "F-" + hashlib.sha1(text.encode()).hexdigest()[:10]
+    db.execute("DELETE FROM facts WHERE fact_id=%s", (fid,))
+    db.execute("INSERT INTO facts (fact_id, text, tags, source, created_at) VALUES (%s, %s, %s, %s, %s)",
+               (fid, text, json.dumps(tags or []), source, _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    return fid
+
+
+def search_facts(query: str, top_k: int = 5) -> list[dict]:
+    words = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) > 2}
+    rows = get_db().query("SELECT text, tags FROM facts")
+    scored = []
+    for r in rows:
+        hay = (r["text"] + " " + " ".join(r["tags"] or [])).lower()
+        s = sum(1 for w in words if w in hay)
+        if s:
+            scored.append({"text": r["text"], "tags": r["tags"], "score": float(s)})
+    scored.sort(key=lambda r: -r["score"])
+    return scored[:top_k]
