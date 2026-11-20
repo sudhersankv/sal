@@ -62,6 +62,8 @@
         "gate.enabled",
         "metrics.updated",
         "sal.summary",
+        "chat.message",
+        "action.status",
         "error"
       ]
     },

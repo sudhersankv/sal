@@ -53,3 +53,9 @@ All tools return JSON. All money in USD floats. All tools that represent a decis
 | `search_shop_data` | `{query, stream?: bookings\|price_sheets}` | `{records:[{stream, id, fields}], source: airbyte\|csv}` | `context.retrieved` (sources=Airbyte) | Airbyte context layer (MCP / REST search over synced shop sheet); fallback: local CSVs in `seed/shop_sheets/` |
 
 **Policy guard change (R1):** an order over `SPEND_CAP` requires an owner `approval_id` **whose identity was verified** (`verify_owner` status approved). The guard rejects otherwise → `escalation`.
+
+## Additions (lead, 2026-11-20 14:10, D-010: personal-agent UX)
+
+- Event `chat.message`: one per message in a staff conversation. `actor` = tech|owner (human) or sal. `data` = `{channel: "telegram"|"ui", chat_id, text, intent?}`. `summary` = first 140 chars of text.
+- Event `action.status`: lifecycle of something Sal is doing. `data` = `{action_id, kind: order|restock|quote|approval|verification|dispute|rule, status: planned|waiting_owner|in_progress|done|refused|failed, title}`; `refs` link to order_id/ro_id/approval_id. Emit on every status change so the UI can show live action cards.
+- Events from chat mode use `day` = the real weekday of the simulated clock and `run_id` = `chat-<chat_id>-<yyyymmdd>` (one log per chat per day). Never show run ids to the user.
