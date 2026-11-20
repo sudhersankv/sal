@@ -151,16 +151,17 @@ function moneyHtml(ev: SalEvent) {
 function approveLabel(ev: SalEvent) {
   const a = String(ev.data?.action ?? "");
   if (a === "approve_rule" || ev.type === "rule.proposed") return `Approve rule ${ev.refs?.rule_id ?? ""}`.trim();
-  if (a === "send_dispute") return "Approve dispute";
+  if (a === "send_dispute" || isDispute(ev)) return "Approve dispute";
   if (ev.money?.wholesale) return `Approve ${usd(ev.money.wholesale)} order`;
   return "Approve";
 }
 function needsOwner(ev: SalEvent) {
-  return (ev.type === "escalation" || ev.type === "rule.proposed") && (ev.data?.needs === "owner" || ev.data?.action || ev.type === "rule.proposed");
+  return ev.type === "escalation" || ev.type === "rule.proposed";
 }
+const isDispute = (ev: SalEvent) => ev.type === "escalation" && (ev.data?.kind === "dispute_drafted" || ev.data?.dispute_drafted === true || ev.data?.action === "send_dispute");
 function pendingKey(ev: SalEvent) {
   const r = ev.refs ?? {};
-  return String(r.rule_id ?? r.escalation_id ?? r.ro_id ?? ev.id);
+  return String(r.rule_id ?? r.ro_id ?? r.escalation_id ?? r.vendor_id ?? ev.id);
 }
 
 function addCard(ev: SalEvent) {
@@ -210,7 +211,11 @@ function addCard(ev: SalEvent) {
 async function approve(ev: SalEvent, btn: HTMLButtonElement) {
   btn.disabled = true;
   btn.textContent = "Sending…";
-  const body = { event_id: ev.id, action: ev.data?.action ?? (ev.type === "rule.proposed" ? "approve_rule" : "approve_order"), ...ev.refs };
+  // sim.api contract: {kind: quote|order|rule|identity, id: ro_id|rule_id, approved}
+  const r = ev.refs ?? {};
+  const kind = ev.type === "rule.proposed" ? "rule" : "order";
+  const id = String(kind === "rule" ? r.rule_id ?? ev.id : r.ro_id ?? r.escalation_id ?? r.vendor_id ?? ev.id);
+  const body = { kind, id, approved: true, event_id: ev.id, action: ev.data?.action ?? (kind === "rule" ? "approve_rule" : isDispute(ev) ? "send_dispute" : "approve_order"), ...r };
   try {
     const r = await fetch("/sim/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
@@ -224,19 +229,34 @@ async function approve(ev: SalEvent, btn: HTMLButtonElement) {
 }
 
 // ------------------------------------------------------------------ meters
+const markup = (w: number) => w * (w <= 25 ? 2.5 : w <= 75 ? 2.0 : w <= 200 ? 1.7 : 1.5); // policy R2
 type Meters = { margin: number | null; saved: number; ontime: number | null; orders: number; escalations: number; variant: string; compare?: { off?: { on_time_pct?: number }; on?: { on_time_pct?: number } } };
 function computeMeters(evs: SalEvent[]): Meters {
   let wholesale = 0, retail = 0, saved = 0, orders = 0, esc = 0, delivered = 0, late = 0, variant = "control";
   let metrics: Record<string, unknown> | null = null;
+  let compare: Meters["compare"];
+  const deliveredIds = new Set<string>();
   for (const e of evs) {
     const m = e.money ?? {}, d = e.data ?? {};
-    if (e.type === "order.placed") { orders++; wholesale += m.wholesale ?? 0; retail += m.retail ?? 0; saved += m.saved ?? 0; }
-    if (e.type === "escalation") { esc++; if (d.kind === "dispute_drafted") saved += m.saved ?? 0; }
-    if (e.type === "order.delivered") { delivered++; if (d.late) late++; }
+    if (e.type === "order.placed") {
+      orders++; saved += m.saved ?? 0;
+      // margin over customer jobs; R2 markup matrix when the producer didn't send retail
+      if (e.refs?.ro_id && m.wholesale) { wholesale += m.wholesale; retail += m.retail ?? markup(m.wholesale); }
+    }
+    if (e.type === "escalation") { esc++; if (isDispute(e)) saved += m.saved ?? 0; }
+    if (e.type === "order.delivered") {
+      const oid = String(e.refs?.order_id ?? e.id);
+      if (!deliveredIds.has(oid)) { deliveredIds.add(oid); delivered++; if (d.late || d.on_time === false) late++; }
+    }
     if (e.type === "gate.enabled" && d.value !== false) variant = String(d.gate ?? "routing_v2");
-    if (e.type === "metrics.updated") metrics = d;
+    if (e.type === "metrics.updated") {
+      const vs = Array.isArray(d.variants) ? (d.variants as { variant?: string; on_time_pct?: number }[]) : [];
+      const off = vs.find((v) => /off|control/i.test(String(v?.variant))), on = vs.find((v) => /on|v2|treat/i.test(String(v?.variant)) && v !== off);
+      if (off && on) compare = { off: { on_time_pct: off.on_time_pct }, on: { on_time_pct: on.on_time_pct } };
+      if (vs.length === 0) metrics = d;
+    }
   }
-  const out: Meters = { margin: retail ? (100 * (retail - wholesale)) / retail : null, saved, ontime: delivered ? (100 * (delivered - late)) / delivered : null, orders, escalations: esc, variant };
+  const out: Meters = { margin: retail ? (100 * (retail - wholesale)) / retail : null, saved, ontime: delivered ? (100 * (delivered - late)) / delivered : null, orders, escalations: esc, variant, compare };
   if (metrics) {
     if (metrics.margin_pct != null) out.margin = Number(metrics.margin_pct);
     if (metrics.saved != null) out.saved = Math.max(out.saved, Number(metrics.saved));
@@ -245,6 +265,7 @@ function computeMeters(evs: SalEvent[]): Meters {
     if (metrics.escalations != null) out.escalations = Math.max(esc, Number(metrics.escalations));
     if (metrics.variant) out.variant = String(metrics.variant);
     if (metrics.compare) out.compare = metrics.compare as Meters["compare"];
+    if (metrics.variant && /control|off/i.test(String(metrics.variant)) && variant !== "control") out.variant = variant;
   }
   return out;
 }
@@ -385,15 +406,17 @@ function stripEvent(ev: SalEvent) {
   const r = ev.refs ?? {}, d = ev.data ?? {};
   switch (ev.type) {
     case "part.identified": {
-      const key = String(r.part_no ?? ev.id);
-      upsertTile({ key, label: key, fit: `${d.year ?? ""} ${d.make ?? ""} ${d.model ?? ""} ${d.engine_l ? d.engine_l + "L" : ""}`.trim(), kind: kindFor(`${d.part_type ?? ""} ${key}`), flag: String(d.position ?? "needed").toUpperCase() });
+      const pn = r.part_no ?? d.oem_part_no;
+      const key = String(pn ?? `${r.ro_id ?? ""}:${d.part_type ?? ev.id}`);
+      const fit = `${d.year ?? ""} ${d.make ?? ""} ${d.model ?? ""} ${d.engine_l ? d.engine_l + "L" : ""}`.trim();
+      upsertTile({ key, label: String(pn ?? (r.ro_id ? `${r.ro_id} · part` : "part")), fit: fit || ev.summary.slice(0, 60), kind: kindFor(`${d.part_type ?? ""} ${key} ${ev.summary}`), flag: String(d.position ?? "needed").toUpperCase() });
       stripMode = "parts";
       break;
     }
     case "vendors.compared":
-      listings = ((d.listings as Listing[]) ?? []).map((l) => ({ ...l }));
-      stripMode = "compare";
-      showVendorCards();
+      listings = Array.isArray(d.listings) ? (d.listings as Listing[]).filter((l) => l && typeof l === "object").map((l) => ({ ...l, price: Number(l.price ?? 0) })) : [];
+      stripMode = listings.length ? "compare" : stripMode;
+      if (listings.length) showVendorCards();
       break;
     case "part.rejected": {
       const l = listings.find((x) => x.sku === r.sku);
@@ -428,8 +451,10 @@ function stripEvent(ev: SalEvent) {
       break;
     }
     case "stock.low": {
-      const sku = String(r.sku ?? ev.id);
-      upsertTile({ key: sku, label: sku, fit: ev.summary.split(":")[0], kind: kindFor(`${sku} ${ev.summary}`), qty: `${d.have ?? 0}<small>/ need ${d.need ?? "?"}</small>`, flag: "LOW", low: true });
+      const name = ev.summary.split(/:| below /)[0].trim();
+      const sku = String(r.sku ?? name);
+      const qty = d.have != null ? `${d.have}<small>/ need ${d.need ?? "?"}</small>` : "";
+      upsertTile({ key: sku, label: r.sku ? sku : "LOW STOCK", fit: name, kind: kindFor(`${sku} ${ev.summary}`), qty, flag: "LOW", low: true });
       stripMode = "parts";
       break;
     }

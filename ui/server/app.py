@@ -37,7 +37,24 @@ app = FastAPI(title="Sal UI server")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _events: list[dict] = []
+_seen: set[str] = set()
 _subscribers: set[asyncio.Queue] = set()
+_logged: dict[Path, set[str]] = {}
+
+
+def _already_logged(path: Path, ev_id: str) -> bool:
+    """sim/tools may write the same jsonl locally before POSTing; never duplicate a line."""
+    ids = _logged.get(path)
+    if ids is None or ev_id not in ids:
+        ids = set()
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    ids.add(json.loads(line).get("id"))
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+        _logged[path] = ids
+    return ev_id in ids
 
 
 # ---------------------------------------------------------------- helpers
@@ -100,10 +117,11 @@ def compute_meters(events: list[dict]) -> dict[str, Any]:
             m["escalations"] += 1
         elif t == "order.delivered":
             delivered += 1
-            on_time += 0 if (data.get("late") or (e.get("refs") or {}).get("late")) else 1
+            on_time += 0 if (data.get("late") or data.get("on_time") is False) else 1
         elif t == "gate.enabled" and data.get("value", True):
             m["variant"] = data.get("gate", "routing_v2")
-        if t == "order.placed" or (t == "escalation" and data.get("kind") == "dispute_drafted"):
+        dispute = data.get("kind") == "dispute_drafted" or data.get("dispute_drafted") is True
+        if t == "order.placed" or (t == "escalation" and dispute):
             m["saved"] += float(money.get("saved") or 0)
         if t == "metrics.updated":
             metrics_seen = data
@@ -161,8 +179,14 @@ async def post_event(request: Request):
         return JSONResponse({"ok": False, "errors": errs}, status_code=422)
     run_dir = RUNS / str(ev["run_id"]).replace("/", "_").replace("\\", "_").replace("..", "_")
     run_dir.mkdir(parents=True, exist_ok=True)
-    with (run_dir / "events.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps(ev, separators=(",", ":")) + "\n")
+    log = run_dir / "events.jsonl"
+    if not _already_logged(log, ev["id"]):
+        with log.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(ev, separators=(",", ":")) + "\n")
+        _logged.setdefault(log, set()).add(ev["id"])
+    if ev["id"] in _seen:
+        return {"ok": True, "id": ev["id"], "duplicate": True}
+    _seen.add(ev["id"])
     _events.append(ev)
     await broadcast(ev)
     return {"ok": True, "id": ev["id"]}
