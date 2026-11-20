@@ -9,7 +9,7 @@ def _offline_fixture_world(monkeypatch, tmp_path):
     monkeypatch.setenv("SAL_EVENTS_POST", "0")
     monkeypatch.setenv("SAL_RUNS_DIR", str(tmp_path))
     monkeypatch.setenv("SAL_RUN_ID", "test")
-    for k in ("SAL_VARIANT", "SAL_GATE_SOURCE", "SPEND_CAP", "SAL_NO_BUY"):
+    for k in ("SAL_VARIANT", "SAL_GATE_ROUTING", "SAL_GATE_ROUTING_V2", "SPEND_CAP", "SAL_NO_BUY"):
         monkeypatch.delenv(k, raising=False)
     from tools import context, data, impl
     monkeypatch.setattr(impl, "VENDOR_URL", "http://127.0.0.1:9")

@@ -85,8 +85,12 @@ def _db_client():
     if os.environ.get("SAL_TOOLS_DATA", "").lower() == "fixtures":
         return None
     try:
-        from db import client  # type: ignore[attr-defined]
-        return client
+        import contextlib
+        import sys
+
+        from db.client import get_db
+        with contextlib.redirect_stdout(sys.stderr):  # stdout is the MCP channel
+            return get_db()
     except Exception:
         return None
 
@@ -107,13 +111,13 @@ def _local_query(sql: str, params: tuple | list = ()) -> list[dict]:
 
 
 def query(sql: str, params: tuple | list = (), *, allow_empty_fallback: bool = True) -> tuple[list[dict], str]:
-    """Returns (rows, backend) where backend is 'singlestore' or 'fixtures'."""
+    """Returns (rows, backend): backend is db.client's ('singlestore' | 'sqlite') or 'fixtures'."""
     client = _db_client()
     if client is not None:
         try:
             rows = _rows(client.query(sql, tuple(params)))
             if rows or not allow_empty_fallback:
-                return rows, "singlestore"
+                return rows, getattr(client, "backend", "db")
         except Exception as e:  # noqa: BLE001
             log.warning("db.client.query failed, using fixtures: %s", e)
     return _local_query(sql, params), "fixtures"
@@ -126,7 +130,7 @@ def execute(sql: str, params: tuple | list = ()) -> str:
     if client is not None:
         try:
             client.execute(sql, tuple(params))
-            backend = "singlestore"
+            backend = getattr(client, "backend", "db")
         except Exception as e:  # noqa: BLE001
             log.warning("db.client.execute failed: %s", e)
     try:
@@ -143,7 +147,7 @@ def vector_search(table: str, vector: list[float], k: int = 5, where: str = "", 
     if client is None or not hasattr(client, "vector_search"):
         return None
     try:
-        return _rows(client.vector_search(table, vector, k=k, where=where, params=params))
+        return _rows(client.vector_search(vector, k=k, where=where or None, params=params, table=table))
     except Exception as e:  # noqa: BLE001
         log.warning("vector_search failed: %s", e)
         return None

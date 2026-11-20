@@ -33,6 +33,7 @@ TOOLS = [
 
 for _fn in TOOLS:
     mcp.tool(structured_output=False)(_fn)
+    globals()[_fn.__name__] = _fn  # `from tools.server import approve_rule` works for sim/ui
 
 
 def main() -> None:

@@ -25,7 +25,7 @@ def test_server_lists_every_contract_tool():
 
 def test_monday(_offline_fixture_world):
     tmp = _offline_fixture_world
-    intake = impl.extract_intake("Civic in bay 2, P0141, VIN 19XFB2F59EE200001, customer promised by 3 PM")
+    intake = impl.extract_intake("Civic in bay 2, P0141, VIN 19XFB2F58EE214879, customer promised by 3 PM")
     assert (intake["dtc"], intake["bay"]) == ("P0141", 2)
     car = impl.decode_vin(intake["vin"])
     assert {"year", "make", "model", "trim", "engine_l", "cylinders", "raw_source_url"} <= car.keys()

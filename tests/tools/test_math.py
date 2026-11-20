@@ -39,3 +39,11 @@ def test_scorecard_sql_planted_pattern():
     assert per["bayshore"]["late_rate"] == 0.375
     assert per["bayshore"]["missed_core_credits"] == 2 and per["bayshore"]["missed_core_amount"] == 90.0
     assert per["mission"]["late"] == 0
+
+
+def test_statement_text_rows_from_doc_text():
+    text = ("DATE INVOICE SKU DESCRIPTION QTY AMOUNT CORE CR 2026-10-16 BSI-104468 BSP101887  MOTORCRAFT BRF-1586 "
+            "BRAKE PADS, FRONT  1  42.42  0.00 2026-10-22 BSI-104500 BSP100001 DENSO STARTER  1  152.00  45.00")
+    rows = impl._text_rows(text)
+    assert [(r["invoice_no"], r["amount"], r["core_credit"]) for r in rows] == [
+        ("BSI-104468", 42.42, 0.0), ("BSI-104500", 152.0, 45.0)]

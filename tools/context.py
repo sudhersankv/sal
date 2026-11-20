@@ -74,4 +74,4 @@ def plus_minutes(minutes: float) -> str:
 
 def variant() -> str:
     """Statsig arm chosen by sim (never by Sal): 'on' means sal_vendor_routing_v2 ON."""
-    return (_override.get("variant") or os.environ.get("SAL_VARIANT") or "off").lower()
+    return (_override.get("variant") or os.environ.get("SAL_VARIANT") or "").lower()

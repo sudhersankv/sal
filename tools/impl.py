@@ -44,6 +44,23 @@ def err(code: str, message: str) -> dict:
     return {"error": {"code": code, "message": message}}
 
 
+_MOCK_STATE = {"up": None, "checked": 0.0}
+
+
+def _mock_up() -> bool:
+    """Is the vendors/ mock (port 8101) reachable? Cached 30s so a down mock costs one fast probe, not 3s/call."""
+    import time
+    if _MOCK_STATE["up"] is not None and time.time() - _MOCK_STATE["checked"] < 30:
+        return bool(_MOCK_STATE["up"])
+    try:
+        import httpx
+        up = httpx.get(f"{VENDOR_URL}/health", timeout=0.5).status_code == 200
+    except Exception:
+        up = False
+    _MOCK_STATE.update(up=up, checked=time.time())
+    return up
+
+
 def _cache_path(kind: str, key: str) -> Path:
     h = hashlib.sha256(key.encode()).hexdigest()[:24]
     return context.runs_dir() / "cache" / kind / f"{h}.json"
@@ -115,34 +132,19 @@ def _short_id(prefix: str, *parts) -> str:
 # ------------------------------------------------------------------------------------------- NHTSA
 @safe
 def decode_vin(vin: str) -> dict:
-    """Decode a VIN with NHTSA vPIC (cached; fixture fallback)."""
+    """Decode a VIN with NHTSA vPIC (tools.integrations.nhtsa: seed cache -> live -> runs cache)."""
     vin = (vin or "").strip().upper()
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-    raw = backends.call("nhtsa", ("decode_vin", "decode"), vin) or _cache_get("nhtsa", url)
-    method = "nhtsa"
-    if raw is None and os.environ.get("SAL_TOOLS_OFFLINE") != "1":
-        try:
-            raw = _http_get_json(url)
-            _cache_put("nhtsa", url, raw)
-        except Exception as e:  # noqa: BLE001
-            log.warning("vPIC failed: %s", e)
-    out = None
-    if isinstance(raw, dict) and raw.get("Results"):
-        r = raw["Results"][0]
-        if r.get("Make") and r.get("ModelYear"):
-            out = {"year": int(r["ModelYear"]), "make": r["Make"], "model": r.get("Model", ""),
-                   "trim": r.get("Trim", ""), "engine_l": round(_num(r.get("DisplacementL")), 1),
-                   "cylinders": int(_num(r.get("EngineCylinders"))), "raw_source_url": url}
-    elif isinstance(raw, dict) and raw.get("make"):
-        out = {**raw, "raw_source_url": raw.get("raw_source_url", url)}
-    if out is None:
-        out = fx.VIN_DECODES.get(vin)
-        method = "fixture"
-        if out is None:
-            return err("vin_not_decoded", f"NHTSA could not decode VIN {vin}")
-    out = {**out, "method": method}
-    events.emit("part.identified", f"VIN decoded: {out['year']} {out['make'].title()} {out['model']} {out['engine_l']}L",
-                sources=[{"name": "NHTSA", "ref": "vPIC decodevinvalues", "url": url}],
+    raw = backends.call("nhtsa", ("decode_vin",), vin)
+    if isinstance(raw, dict) and raw.get("make") and raw.get("year"):
+        out = {**raw, "raw_source_url": raw.get("raw_source_url") or url, "method": raw.get("source", "nhtsa")}
+    elif vin in fx.VIN_DECODES:
+        out = {**fx.VIN_DECODES[vin], "method": "fixture"}
+    else:
+        return err("vin_not_decoded", (raw or {}).get("error", {}).get("message") or f"NHTSA could not decode {vin}")
+    out.pop("source", None)
+    events.emit("part.identified", f"VIN decoded: {out['year']} {str(out['make']).title()} {out['model']} {out['engine_l']}L",
+                sources=[{"name": "NHTSA", "ref": "vPIC decodevinvalues", "url": out["raw_source_url"]}],
                 refs={"vin": vin}, data={"partial": True, "vehicle": out})
     return out
 
@@ -150,85 +152,37 @@ def decode_vin(vin: str) -> dict:
 @safe
 def get_complaints(make: str, model: str, year: int, component_keyword: str = "") -> dict:
     """NHTSA complaints for the vehicle (context on known failure patterns of the CAR, not part brands)."""
-    url = (f"https://api.nhtsa.gov/complaints/complaintsByVehicle?make={make}&model={model}&modelYear={year}")
-    raw = backends.call("nhtsa", ("complaints", "get_complaints"), make, model, year) or _cache_get("nhtsa", url)
-    if raw is None and os.environ.get("SAL_TOOLS_OFFLINE") != "1":
-        try:
-            raw = _http_get_json(url)
-            _cache_put("nhtsa", url, raw)
-        except Exception as e:  # noqa: BLE001
-            log.warning("complaints failed: %s", e)
     kw = (component_keyword or "").lower()
-    if isinstance(raw, dict) and isinstance(raw.get("results"), list):
-        res = raw["results"]
-        match = [c for c in res if not kw or kw in (c.get("components", "") + " " + c.get("summary", "")).lower()]
-        out = {"total": len(res), "matching": len(match),
-               "top": [{"odi": str(c.get("odiNumber", "")), "date": c.get("dateComplaintFiled", ""),
-                        "summary": (c.get("summary") or "")[:300]} for c in match[:3]],
-               "source_url": url, "method": "nhtsa"}
-    elif isinstance(raw, dict) and "total" in raw:
-        out = {**raw, "method": "nhtsa"}
+    raw = backends.call("nhtsa", ("complaints",), make, model, int(year), kw or None, 3)
+    if isinstance(raw, dict) and "total" in raw:
+        out = {"total": raw["total"], "matching": raw.get("matching", 0), "top": raw.get("top", [])[:3],
+               "source_url": raw.get("source_url", ""), "method": raw.get("source", "nhtsa")}
     else:
         out = {**fx.COMPLAINTS_CIVIC_2014, "method": "fixture"}
     events.emit("context.retrieved", f"NHTSA: {out['matching']} of {out['total']} complaints mention '{kw or 'any'}'",
                 reason="Vehicle failure-pattern context only; brand quality comes from shop history.",
-                sources=[{"name": "NHTSA", "ref": "complaintsByVehicle", "url": url}],
+                sources=[{"name": "NHTSA", "ref": "complaintsByVehicle", "url": out["source_url"]}],
                 data={"kind": "complaints", "matching": out["matching"]})
     return out
 
 
 # ------------------------------------------------------------------------------------------- Senso
-def _senso_rest(question: str):
-    key = os.environ.get("SENSO_API_KEY")
-    if not key or os.environ.get("SAL_TOOLS_OFFLINE") == "1":
-        return None
-    import httpx
-    base = os.environ.get("SENSO_BASE_URL", "https://apiv2.senso.ai/api/v1").rstrip("/")
-    r = httpx.post(f"{base}/org/search", json={"query": question}, headers={"X-API-Key": key}, timeout=20)
-    r.raise_for_status()
-    return r.json()
-
-
-def _local_rules(question: str) -> dict:
-    words = [w for w in re.findall(r"[a-z0-9]+", question.lower()) if len(w) > 2]
-    scored = []
-    for d in fx.SHOP_RULES:
-        text = (d["title"] + " " + d["chunk_text"]).lower()
-        s = sum(text.count(w) for w in words)
-        if s:
-            scored.append((s, d))
-    hits = [d for _, d in sorted(scored, key=lambda x: -x[0])][:4] or fx.SHOP_RULES[:3]
-    return {"answer": " ".join(d["chunk_text"] for d in hits), "passages": hits}
-
-
 @safe
 def get_shop_rules(question: str) -> dict:
-    """Ask the shop's rules (Senso). Cites content_ids."""
+    """Ask the shop's rules (Senso POST /org/search). Cites content_ids."""
     raw = backends.call("senso", ("search",), question)
-    method = "senso"
-    if raw is None:
-        try:
-            raw = _senso_rest(question)
-            if raw:
-                _cache_put("senso", question, raw)
-        except Exception as e:  # noqa: BLE001
-            log.warning("senso search failed: %s", e)
-            raw = None
-    if raw is None:
-        raw = _cache_get("senso", question)
-        method = "senso-cache" if raw else "local"
-    if raw:
-        results = raw.get("results") or raw.get("passages") or []
+    if isinstance(raw, dict) and (raw.get("passages") or raw.get("answer")):
         out = {"answer": raw.get("answer") or "",
                "passages": [{"content_id": str(r.get("content_id", "")), "title": r.get("title", ""),
-                             "chunk_text": (r.get("chunk_text") or "")[:600]} for r in results[:5]]}
+                             "chunk_text": (r.get("chunk_text") or "")[:600]} for r in raw.get("passages", [])[:5]],
+               "method": raw.get("source", "senso")}
     else:
-        out = _local_rules(question)
-    out["method"] = method
+        hits = fx.SHOP_RULES
+        out = {"answer": " ".join(d["chunk_text"] for d in hits[:4]), "passages": hits[:5], "method": "fixture"}
     ids = [p["content_id"] for p in out["passages"]][:5]
     events.emit("context.retrieved", f"Shop rules: {question}"[:140], reason=(out["answer"] or "")[:280],
                 sources=[{"name": "Senso", "ref": i or p["title"]} for i, p in zip(ids, out["passages"])],
-                data={"kind": "shop_rules", "question": question, "content_ids": ids})
+                data={"kind": "shop_rules", "question": question, "content_ids": ids, "method": out["method"]})
     return out
 
 
@@ -275,13 +229,14 @@ def identify_part(year: int, make: str, model: str, engine_l: float, dtc: str | 
 def search_vendor(vendor_id: str, oem_part_no: str) -> dict:
     """A vendor's listings for an OEM part number (vendors/ mock counter; fallback direct catalog query)."""
     listings = None
-    try:
-        import httpx
-        r = httpx.get(f"{VENDOR_URL}/v/{vendor_id}/search", params={"oem": oem_part_no}, timeout=1.5)
-        if r.status_code == 200:
-            listings = r.json().get("listings")
-    except Exception:
-        listings = None
+    if _mock_up():
+        try:
+            import httpx
+            r = httpx.get(f"{VENDOR_URL}/v/{vendor_id}/search", params={"oem": oem_part_no}, timeout=3)
+            if r.status_code == 200:
+                listings = r.json().get("listings")
+        except Exception:
+            listings = None
     source = "vendors-mock"
     if listings is None:
         from vendors.catalog import search as vsearch
@@ -303,24 +258,15 @@ def _sigmoid(x: float) -> float:
         return 0.0 if x < 0 else 1.0
 
 
-def _sie_scores(query: str, texts: list[str]) -> list[float] | None:
-    res = backends.call("sie", ("score", "rerank"), query, texts)
-    if res is None:
-        return None
-    if isinstance(res, dict):
-        res = res.get("scores", res)
-    try:
-        if res and isinstance(res[0], dict):
-            # [{index|rank, score}] → align to input order if index present
-            if "index" in res[0]:
-                out = [0.0] * len(texts)
-                for r in res:
-                    out[int(r["index"])] = float(r["score"])
-                return out
-            return [float(r["score"]) for r in res]
-        return [float(x) for x in res]
-    except Exception:
-        return None
+def _sie_scores(query: str, texts: list[str]) -> tuple[list[float] | None, str]:
+    """SIE rerank (cross-encoder logits, aligned to input order) -> (scores, source)."""
+    res = backends.call("sie", ("rerank",), query, texts)
+    if not isinstance(res, dict) or not res.get("results"):
+        return None, "none"
+    out = [0.0] * len(texts)
+    for r in res["results"]:
+        out[int(r["index"])] = float(r["score"])
+    return out, res.get("source", "live")
 
 
 @safe
@@ -329,8 +275,10 @@ def match_listings(oem_part_no: str, listings: list[dict]) -> dict:
     target = _part_by_oem(oem_part_no) or {}
     q = f"{target.get('description') or ''} OEM {oem_part_no}".strip()
     texts = [f"{lst.get('brand', '')} {lst.get('desc') or lst.get('description') or ''}" for lst in listings]
-    scores = _sie_scores(q, texts) if listings else []
-    method = "sie+oem" if scores else "oem-join"
+    scores, sie_src = _sie_scores(q, texts) if listings else (None, "none")
+    method = f"sie-rerank({sie_src})+fitment-guard" if scores else "oem-join"
+    tpos = (target.get("position") or "").lower()
+    opposite = {"downstream": "upstream", "upstream": "downstream"}.get(tpos)
     results = []
     for i, lst in enumerate(listings):
         oem = lst.get("oem_part_no")
@@ -338,12 +286,13 @@ def match_listings(oem_part_no: str, listings: list[dict]) -> dict:
             row = _catalog_row(lst.get("vendor_id"), lst.get("sku", "")) or {}
             oem = row.get("oem_part_no")
         other = _part_by_oem(oem) if oem else None
-        if oem and oem == oem_part_no:
+        text = texts[i].lower()
+        if opposite and opposite in text and tpos not in text:
+            verdict = "different"  # cross-referenced to this OEM no. but the listing says the other position
+        elif oem and oem == oem_part_no:
             verdict = "same"
         elif other and target and (other.get("part_type") != target.get("part_type")
                                    or (other.get("position") or "") != (target.get("position") or "")):
-            verdict = "different"
-        elif scores and _sigmoid(scores[i]) < 0.3:
             verdict = "different"
         else:
             verdict = "variant"
@@ -351,16 +300,15 @@ def match_listings(oem_part_no: str, listings: list[dict]) -> dict:
         results.append({"sku": lst.get("sku"), "vendor_id": lst.get("vendor_id"), "verdict": verdict, "score": sc,
                         "brand": lst.get("brand"), "price": lst.get("price"), "eta_minutes": lst.get("eta_minutes")})
     vec = None
-    emb = backends.call("sie", ("encode", "embed"), q)
-    if isinstance(emb, dict):
-        emb = emb.get("dense")
+    emb = backends.call("sie", ("embed",), [q], True)
+    emb = emb.get("vectors", [None])[0] if isinstance(emb, dict) and emb.get("source") != "fallback" else None
     if emb:
         vec = data.vector_search("vendor_catalog", list(emb), k=5, where="oem_part_no = %s", params=(oem_part_no,))
     out = {"results": results, "method": method, "vector_hits": vec or []}
     diff = [r for r in results if r["verdict"] == "different"]
     srcs = [{"name": "Vendor", "ref": v} for v in sorted({r["vendor_id"] for r in results if r.get("vendor_id")})]
     if scores:
-        srcs.append({"name": "SIE", "ref": os.environ.get("SIE_RERANK_MODEL", "rerank")})
+        srcs.append({"name": "SIE", "ref": os.environ.get("SIE_RERANK_MODEL") or "rerank"})
     srcs.append({"name": "SingleStore", "ref": "vendor_catalog"})
     events.emit("vendors.compared",
                 f"Compared {len(results)} listings for {oem_part_no}" + (f"; {len(diff)} not the same part" if diff else ""),
@@ -455,12 +403,15 @@ def request_owner_approval(ro_id: str, customer_id: str, line_items: list[dict],
 def verify_owner(reason: str, order_total: float, ro_id: str | None = None) -> dict:
     """Re-verify the SHOP owner's identity (Persona inquiry) before an over-cap order. Returns inquiry_id to
     pass as approval_id to place_* tools."""
-    res = backends.call("persona", ("verify_owner", "create_inquiry"), reason=reason, order_total=order_total,
-                        ro_id=ro_id)
+    res = backends.call("persona", ("verify_owner",), reason, _num(order_total), ro_id,
+                        float(os.environ.get("SAL_OWNER_WAIT_S", "0")))
     if isinstance(res, dict) and res.get("inquiry_id"):
+        if (res.get("method") == "simulated" and res.get("status") == "pending"
+                and os.environ.get("SAL_OWNER_VERIFY_MODE", "auto") == "auto"):
+            res = {**res, **(backends.call("persona", ("simulate_approve",), res["inquiry_id"]) or {})}
         out = {"inquiry_id": res["inquiry_id"], "status": res.get("status", "pending"),
                "verified_name": res.get("verified_name", ""), "hosted_url": res.get("hosted_url", ""),
-               "method": "persona"}
+               "method": res.get("method", "persona")}
     else:
         mode = os.environ.get("SAL_OWNER_VERIFY_MODE", "auto")
         out = {"inquiry_id": _short_id("inq_sim", reason, order_total, ro_id),
@@ -479,6 +430,8 @@ def verify_owner(reason: str, order_total: float, ro_id: str | None = None) -> d
 # ------------------------------------------------------------------------------------------ orders
 def _place_with_mock(vendor_id: str, sku: str, qty: int, ro_id: str | None) -> dict:
     try:
+        if not _mock_up():
+            raise ConnectionError("vendors mock down")
         import httpx
         r = httpx.post(f"{VENDOR_URL}/v/{vendor_id}/orders", json={"sku": sku, "qty": qty, "ro_id": ro_id,
                                                                    "run_id": context.run_id(),
@@ -533,7 +486,7 @@ def place_counter_order(vendor_id: str, sku: str, qty: int, ro_id: str, approval
     events.emit("order.placed", f"Ordered {qty}× {row.get('brand')} {ln.part_type.replace('_', ' ')} @ {v['name']} ${out['total']:.2f}, ETA {str(out['eta'])[11:16]}"[:140],
                 money={"wholesale": out["total"]}, sources=[{"name": "Vendor", "ref": out["order_id"]}],
                 refs={"order_id": out["order_id"], "vendor_id": vendor_id, "sku": sku, "ro_id": ro_id},
-                data={"channel": "counter", "eta": out["eta"], "approval_id": approval_id})
+                data={"channel": "counter", "eta": out["eta"], "part_type": ln.part_type, "approval_id": approval_id})
     return out
 
 
@@ -556,16 +509,15 @@ def place_shopify_order(lines: list[dict], note: str = "", approval_id: str | No
     esc = policy.guard("partsdepot", plines, total, approval_id)
     if esc:
         return esc
-    shop_lines = [{"variant_id": r["variant_id"], "qty": r["qty"]} for r in resolved
-                  if str(r["variant_id"]).startswith("gid://shopify/ProductVariant/")
-                  and not str(r["variant_id"]).endswith("/0")]
-    res = None
-    if len(shop_lines) == len(resolved):
-        res = backends.call("shopify", ("place_order", "create_order", "draft_order_complete"), shop_lines, note)
+    shop_lines = [{"variant_id": r["variant_id"], "qty": r["qty"]} for r in resolved]
+    res = backends.call("shopify", ("place_order",), shop_lines, note)
     if isinstance(res, dict) and res.get("shopify_order_id"):
+        live = res.get("source") == "live"
         out = {"shopify_order_id": res["shopify_order_id"], "admin_url": res.get("admin_url", ""),
-               "total": _num(res.get("total"), total), "channel": "shopify"}
-        src = {"name": "Shopify", "ref": out["shopify_order_id"], "url": out["admin_url"]}
+               "total": _num(res.get("total"), total), "channel": "shopify" if live else "mock-online",
+               "eta": res.get("eta") or context.plus_minutes(2880)}
+        src = ({"name": "Shopify", "ref": out["shopify_order_id"], "url": out["admin_url"]} if live
+               else {"name": "Vendor", "ref": out["shopify_order_id"]})
     else:
         from vendors.catalog import place_many
         mock = place_many("partsdepot", [(r["sku"], r["qty"]) for r in resolved], None, sim_ts=context.ts())
@@ -578,7 +530,8 @@ def place_shopify_order(lines: list[dict], note: str = "", approval_id: str | No
     events.emit("order.placed", f"Restock: {n} items on PartsDepot Online ${out['total']:.2f} ({out['channel']})",
                 money={"wholesale": out["total"]}, sources=[src],
                 refs={"order_id": out["shopify_order_id"], "vendor_id": "partsdepot"},
-                data={"channel": out["channel"], "admin_url": out["admin_url"], "lines": resolved, "note": note})
+                data={"channel": out["channel"], "admin_url": out["admin_url"], "lines": resolved, "note": note,
+                      "eta": out["eta"], "part_type": ",".join(sorted({ln.part_type for ln in plines if ln.part_type}))})
     return out
 
 
@@ -641,6 +594,10 @@ def _need_by_sku(bookings: list[dict]) -> dict[str, int]:
     return need
 
 
+# R6 (Senso "Restock rules"): "bundle shop supplies we always use (brake cleaner, shop towels, bulbs)".
+SHOP_SUPPLY_TYPES = ("brake_cleaner", "shop_towels", "bulb")
+
+
 def restock_plan(inventory: list[dict], bookings: list[dict], catalog: dict[str, dict],
                  free_ship_threshold: float, bundle_window: float = 25.0) -> dict:
     """Pure R6 math: order_qty = need + min - have; if subtotal is within $window of free shipping, add the
@@ -669,9 +626,11 @@ def restock_plan(inventory: list[dict], bookings: list[dict], catalog: dict[str,
             q = math.ceil(gap / price)
             if int(i["qty"]) + q > int(i["max_qty"]):
                 continue
-            over = q * price - gap
-            if best is None or over < best[0]:
-                best = (over, sku, q, price, i)
+            ptype = (i.get("part_type") or "").lower()
+            pref = SHOP_SUPPLY_TYPES.index(ptype) if ptype in SHOP_SUPPLY_TYPES else len(SHOP_SUPPLY_TYPES)
+            key = (pref, q * price - gap)
+            if best is None or key < best[0]:
+                best = (key, sku, q, price, i)
         if best:
             _, sku, q, price, i = best
             bundle = {"sku": sku, "need": 0, "have": int(i["qty"]), "order_qty": q, "unit_price": price,
@@ -719,7 +678,7 @@ SCORECARD_SQL = """
 SELECT ph.vendor_id,
        COUNT(*) AS orders,
        SUM(CASE WHEN ph.delivered_at > ph.promised_at THEN 1 ELSE 0 END) AS late,
-       ROUND(SUM(CASE WHEN ph.delivered_at > ph.promised_at THEN 1 ELSE 0 END) / COUNT(*), 3) AS late_rate,
+       ROUND(SUM(CASE WHEN ph.delivered_at > ph.promised_at THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 3) AS late_rate,
        SUM(CASE WHEN ph.core_credit_due > 0 AND COALESCE(ph.core_credit_received, 0) < ph.core_credit_due
                 THEN 1 ELSE 0 END) AS missed_core_credits,
        SUM(CASE WHEN ph.core_credit_due > 0
@@ -738,7 +697,7 @@ ORDER BY late_rate DESC
 def get_vendor_history(vendor_id: str | None = None, part_type: str | None = None, days: int = 90) -> dict:
     """Vendor scorecard over N days (one SQL query): late rate, missed core credits, price index.
     part_type may be comma-separated, e.g. 'starter,alternator'."""
-    cutoff = (context.now() - timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (context.now() - timedelta(days=int(days))).strftime("%Y-%m-%d 00:00:00")
     filters, params = "", [cutoff]
     if vendor_id:
         filters += " AND ph.vendor_id = %s"
@@ -748,8 +707,6 @@ def get_vendor_history(vendor_id: str | None = None, part_type: str | None = Non
         filters += f" AND ph.part_type IN ({','.join(['%s'] * len(types))})"
         params += types
     sql = SCORECARD_SQL.format(filters=filters)
-    if data._db_client() is None:  # sqlite: integer division + REAL
-        sql = sql.replace(") / COUNT(*)", ") * 1.0 / COUNT(*)")
     rows, backend = data.query(sql, params)
     per = [{"vendor_id": r["vendor_id"], "orders": int(r["orders"]), "late": int(_num(r["late"])),
             "late_rate": round(_num(r["late_rate"]), 3), "missed_core_credits": int(_num(r["missed_core_credits"])),
@@ -814,14 +771,13 @@ def approve_rule(rule_id: str) -> dict:
     if not rule:
         return err("unknown_rule", f"no rule {rule_id}")
     title, text = rule.get("title", rule_id), rule.get("rule_text", "")
-    cid = backends.call("senso", ("add_raw", "add_doc", "kb_raw"), title, text)
+    cid = backends.call("senso", ("add_doc",), title, text)
     if isinstance(cid, dict):
         cid = cid.get("content_id") or cid.get("kb_node_id")
     cid = str(cid) if cid else f"local:{rule_id}"
     backends.call("cognee", ("remember",), f"Owner approved rule: {title}. {text}", ["rule", rule_id])
-    gate = {"name": policy.ROUTING_GATE, "on": True,
-            "method": "statsig" if backends.call("statsig_client", ("enable_gate", "set_gate"), policy.ROUTING_GATE)
-            else "env"}
+    # The gate flip itself is the sim's job (sim/flags.py write_override / Statsig console); we report it.
+    gate = {"name": policy.ROUTING_GATE, "on": True, "method": "sim"}
     data.execute("UPDATE rules SET status = %s, senso_content_id = %s WHERE rule_id = %s", ("approved", cid, rule_id))
     _ledger("rule_approved", {"rule_id": rule_id, "senso_content_id": cid, "gate": gate})
     events.emit("rule.approved", f"Owner approved: {title}"[:140], actor="owner", reason=text[:280],
@@ -840,7 +796,7 @@ def _facts_file() -> Path:
 def remember_fact(text: str, tags: list[str] | None = None) -> dict:
     """Save something Sal OBSERVED (Cognee). Rules the owner set belong in Senso, not here."""
     res = backends.call("cognee", ("remember",), text, tags or [])
-    method = "cognee" if res is not None else "local"
+    method = "cognee" if isinstance(res, dict) and res.get("source") == "live" else "local"
     p = _facts_file()
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
@@ -857,8 +813,9 @@ def recall_facts(query: str) -> dict:
     facts, method = None, "cognee"
     if isinstance(res, list):
         facts = [r if isinstance(r, str) else (r.get("text") or json.dumps(r, default=str)) for r in res]
-    elif isinstance(res, dict) and res.get("facts") is not None:
-        facts = res["facts"]
+    elif isinstance(res, dict) and res.get("facts"):
+        facts = [f.get("text") if isinstance(f, dict) else str(f) for f in res["facts"]]
+        method = "cognee" if res.get("source") == "live" else f"cognee-{res.get('source', 'fallback')}"
     elif isinstance(res, str) and res.strip():
         facts = [res]
     if not facts:
@@ -871,7 +828,7 @@ def recall_facts(query: str) -> dict:
         scored = sorted(((sum(w in f.lower() for w in words), f) for f in pool), key=lambda x: -x[0])
         facts = [f for s, f in scored if s > 0][:5]
     events.emit("context.retrieved", f"Recalled {len(facts)} facts: {query}"[:140],
-                sources=[{"name": "Cognee" if method == "cognee" else "Shop", "ref": f[:100]} for f in facts[:4]],
+                sources=[{"name": "Cognee" if method.startswith("cognee") else "Shop", "ref": f[:100]} for f in facts[:4]],
                 data={"kind": "memory", "query": query, "facts": facts, "method": method})
     return {"facts": facts, "method": method}
 
@@ -902,11 +859,13 @@ def extract_intake(text: str) -> dict:
     """Pull VIN, DTC, bay, vehicle, promise time from a tech's free-text message (SIE extract; regex guard)."""
     out = _regex_intake(text)
     labels = ["vin", "dtc code", "bay number", "vehicle", "promise time"]
-    res = backends.call("sie", ("extract",), text, labels)
+    res = backends.call("sie", ("extract_entities",), text, labels)
     method = "regex"
+    if isinstance(res, dict) and res.get("source") == "fallback":
+        res = None
     ents = res.get("entities") if isinstance(res, dict) else res if isinstance(res, list) else None
     if ents:
-        method = "sie+regex"
+        method = f"sie({res.get('model', '')})+regex"
         m = {"vin": "vin", "dtc code": "dtc", "bay number": "bay", "vehicle": "vehicle", "promise time": "promise_time"}
         for e in ents:
             k = m.get(str(e.get("label", "")).lower())
@@ -942,6 +901,41 @@ def _csv_lines(text: str) -> list[dict]:
     return out
 
 
+_ROW_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*\|?\s*([A-Z]{2,4}-?\d{3,}[\w-]*)\s*\|?\s*([A-Z0-9][\w-]+)\s*\|?\s*"
+                     r"(.+?)\s*\|?\s*(\d+)\s*\|?\s*\$?(-?[\d,]+\.\d{2})\s*\|?\s*\$?(-?[\d,]+\.\d{2})")
+
+
+def _text_rows(text: str) -> list[dict]:
+    """Statement table rows out of docling/OCR text (fixed-width or markdown table)."""
+    out = []
+    for m in _ROW_RE.finditer(text):
+        d, inv, sku, desc, qty, amt, core = m.groups()
+        out.append({"date": d, "invoice_no": inv, "sku": sku, "desc": desc.strip(" |"), "qty": int(qty),
+                    "amount": _num(amt.replace(",", "")), "core_credit": _num(core.replace(",", ""))})
+    return out
+
+
+def _ocr_text_to_lines(text: str) -> list[dict] | None:
+    """Doc/OCR transcript -> lines: table regex first; CSV-ish text; else SIE small LLM structures it."""
+    rows = _text_rows(text)
+    if rows:
+        return rows
+    low = text.lower()
+    if "invoice" in low and "," in text and "date" in low:
+        try:
+            got = _csv_lines(text[low.index("date"):])
+            if got:
+                return got
+        except Exception:
+            pass
+    prompt = ("Return JSON {\"lines\": [...]} with keys " + ",".join(STATEMENT_COLS)
+              + " for each statement line:\n" + text[:6000])
+    res = backends.call("sie", ("llm",), [{"role": "user", "content": prompt}], {"type": "json_object"}, 2048)
+    if isinstance(res, dict) and isinstance(res.get("json"), dict):
+        return res["json"].get("lines") or None
+    return None
+
+
 @safe
 def parse_vendor_statement(path: str) -> dict:
     """Parse a vendor statement (CSV; PDF via SIE doc extract; scan via SIE VLM OCR). Fallback: sibling CSV."""
@@ -949,24 +943,31 @@ def parse_vendor_statement(path: str) -> dict:
     if not p.is_absolute():
         p = ROOT / p
     if not p.exists():
-        alt = ROOT / "tools" / "samples" / p.name
-        p = alt if alt.exists() else p
+        for alt in (ROOT / "seed" / "statements" / p.name, ROOT / "tools" / "samples" / p.name):
+            if alt.exists():
+                p = alt
+                break
     if not p.exists():
         return err("not_found", f"no statement at {path}")
     ext = p.suffix.lower()
     lines, method, model = None, "csv", ""
     schema = {"type": "object", "properties": {"vendor": {"type": "string"}, "statement_date": {"type": "string"},
               "lines": {"type": "array", "items": {"type": "object", "properties": {c: {"type": "string"} for c in STATEMENT_COLS}}}}}
+    instr = "Extract every statement line: date, invoice_no, sku, desc, qty, amount, core_credit (0 if none)."
     if ext == ".pdf":
-        res = backends.call("sie", ("extract_document", "extract_doc", "doc_extract"), str(p), schema)
-        if isinstance(res, dict) and res.get("lines"):
-            lines, method, model = res["lines"], "doc", os.environ.get("SIE_DOC_MODEL", "")
+        res = backends.call("sie", ("extract_document",), str(p), schema, instr)
+        dd = (res.get("data") or {}) if isinstance(res, dict) and res.get("method") == "doc" else {}
+        got = dd.get("lines") or (_ocr_text_to_lines(dd["text"]) if dd.get("text") else None)
+        if got:
+            lines, method, model = got, "doc", res.get("model", "")
     elif ext in (".png", ".jpg", ".jpeg"):
-        res = backends.call("sie", ("ocr", "vlm_ocr", "ocr_image"), str(p), schema)
-        if isinstance(res, dict) and res.get("lines"):
-            lines, method, model = res["lines"], "ocr", os.environ.get("SIE_VLM_MODEL", "")
+        res = backends.call("sie", ("ocr_image",), str(p))
+        if isinstance(res, dict) and res.get("text"):
+            model = res.get("model", "")
+            lines = _ocr_text_to_lines(res["text"])
+            method = "ocr" if lines else method
     if lines is None:
-        csv_path = p if ext == ".csv" else p.with_suffix(".csv")
+        csv_path = p if ext == ".csv" else p.with_name(re.sub(r"_scan$", "", p.stem) + ".csv")
         if not csv_path.exists():
             return err("unparsed", f"could not parse {p.name} and no CSV fallback")
         lines, method = _csv_lines(csv_path.read_text(encoding="utf-8")), "csv"
@@ -1017,9 +1018,9 @@ def reconcile_statement(vendor_id: str, lines: list[dict]) -> dict:
 @safe
 def search_shop_data(query: str, stream: str | None = None) -> dict:
     """Search the shop's synced sheets (Airbyte context layer: bookings, price_sheets); fallback local CSVs."""
-    res = backends.call("airbyte", ("search", "search_shop_data"), query, stream)
+    res = backends.call("airbyte", ("search_shop_data",), query, stream)
     if isinstance(res, dict) and res.get("records") is not None:
-        recs, source = res["records"], "airbyte"
+        recs, source = res["records"], res.get("source", "airbyte")
     elif isinstance(res, list):
         recs, source = res, "airbyte"
     else:

@@ -7,7 +7,7 @@ cleaner x6 to clear $150, Sun Bayshore 3/8 late on starters/alternators + 2 miss
 """
 from __future__ import annotations
 
-HERO_VIN = "19XFB2F59EE200001"  # illustrative; data (T1) replaces with an NHTSA-verified VIN
+HERO_VIN = "19XFB2F58EE214879"  # NHTSA-verified by data (T1)
 HERO_RO = "RO-1042"
 HERO_OEM_DOWNSTREAM = "36532-R1A-A01"  # illustrative
 HERO_OEM_UPSTREAM = "36531-R1A-A01"  # illustrative
@@ -88,7 +88,7 @@ INVENTORY = [
     {"sku": "OF-CRV", "name": "Oil filter CR-V", "part_type": "oil_filter", "qty": 3, "min_qty": 2, "max_qty": 12},
     {"sku": "OF-CAMRY", "name": "Oil filter Camry", "part_type": "oil_filter", "qty": 2, "min_qty": 2, "max_qty": 12},
     {"sku": "WIPER-22", "name": "Wiper blade 22in", "part_type": "wiper", "qty": 2, "min_qty": 2, "max_qty": 10},
-    {"sku": "BRK-CLN", "name": "Brake parts cleaner", "part_type": "chemical", "qty": 8, "min_qty": 4, "max_qty": 16},
+    {"sku": "BRK-CLN", "name": "Brake parts cleaner", "part_type": "brake_cleaner", "qty": 8, "min_qty": 4, "max_qty": 16},
     {"sku": "CABIN-AF", "name": "Cabin air filter", "part_type": "filter", "qty": 3, "min_qty": 1, "max_qty": 4},
 ]
 

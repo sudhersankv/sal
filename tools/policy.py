@@ -33,18 +33,24 @@ class Policy:
     routed_vendor: str = "mission"
 
 
+_ON = ("on", "true", "1", "gate_on", "routing_v2", ROUTING_GATE)
+_OFF = ("off", "false", "0", "gate_off", "control")
+
+
 def _gate_on() -> bool:
-    """Variant from sim (env SAL_VARIANT / context) wins; live Statsig only if SAL_GATE_SOURCE=statsig."""
-    if os.environ.get("SAL_GATE_SOURCE", "env") != "statsig":
-        return context.variant() in ("on", "true", "1", "routing_v2", ROUTING_GATE)
-    try:  # optional live check (sim normally passes the variant via env)
+    """Arm chosen by sim (never Sal): SAL_GATE_ROUTING_V2 / SAL_GATE_ROUTING / SAL_VARIANT env, else live Statsig."""
+    for k in ("SAL_GATE_ROUTING_V2", "SAL_GATE_ROUTING"):
+        v = os.environ.get(k, "").lower()
+        if v in _ON or v in _OFF:
+            return v in _ON
+    v = context.variant()
+    if v in _ON or v in _OFF:
+        return v in _ON
+    try:
         from tools.integrations import statsig_client  # type: ignore
-        for fn in ("check_gate", "gate", "is_on"):
-            if hasattr(statsig_client, fn):
-                return bool(getattr(statsig_client, fn)(ROUTING_GATE))
+        return bool(statsig_client.check_gate(ROUTING_GATE))
     except Exception:
-        pass
-    return False
+        return False
 
 
 def _parse_no_buy(raw: str) -> dict[str, list[str]]:
@@ -98,8 +104,21 @@ def verification(approval_id: str | None) -> dict | None:
 
 
 def owner_approved(approval_id: str | None) -> bool:
+    """Identity-verified owner approval: our ledger, else a live status check (owner may have approved in the UI)."""
     r = verification(approval_id)
-    return bool(r and r.get("status") == "approved")
+    if r and r.get("status") == "approved":
+        return True
+    if not r:
+        return False  # never issued by verify_owner
+    try:
+        from tools.integrations import persona  # type: ignore
+        st = persona.get_status(approval_id)
+        if isinstance(st, dict) and st.get("status") == "approved":
+            record_verification({**r, **st})
+            return True
+    except Exception:
+        pass
+    return False
 
 
 # --- the guard --------------------------------------------------------------------------------------
