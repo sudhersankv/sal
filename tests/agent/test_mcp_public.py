@@ -10,7 +10,7 @@ from agent import mcp_public
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED = {"ask_sal", "get_today", "list_waiting", "decide", "why", "get_inventory", "get_orders",
-            "get_vendor_scorecards"}
+            "get_vendor_scorecards", "send_bill"}
 
 
 def _json(res):
