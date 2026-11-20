@@ -10,7 +10,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "./app.css";
 
-import { createShopScene, type InventoryItem, type ShopHandle } from "./shop"; // swap to "./scene3d" when it lands
+import { createShopScene, type InventoryItem, type ShopScene as ShopHandle } from "./scene3d";
 import type { SalEvent } from "./types";
 
 // ------------------------------------------------------------------ utils
@@ -93,14 +93,14 @@ shopHost.className = "shop";
 shopHost.innerHTML = `<div class="cap label">Parts room</div><div class="ticker" id="ticker"></div>`;
 function ensureShop() {
   if (shop) return shop;
-  shop = createShopScene(shopHost, { quality: "high" });
-  shop.onSelect((sku) => { location.hash = `#/inventory/${encodeURIComponent(sku)}`; });
+  const quality = new URLSearchParams(location.search).get("quality") === "low" ? "low" : "high";
+  shop = createShopScene(shopHost, { quality, onSelect: (sku) => { if (sku) location.hash = `#/inventory/${encodeURIComponent(sku)}`; } });
   return shop;
 }
 let refreshT: number | undefined;
 function onEvent(ev: SalEvent) {
   streamed.push(ev);
-  shop?.handleEvent(ev);
+  shop?.handleEvent(ev as unknown as Parameters<ShopHandle["handleEvent"]>[0]);
   const tk = document.getElementById("ticker");
   if (tk) tk.innerHTML = `<b>${esc(when(ev.ts))}</b> · ${esc(ev.summary)}`;
   clearTimeout(refreshT);
