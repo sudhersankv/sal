@@ -19,20 +19,33 @@ from tools.integrations import sie, senso, persona, airbyte, shopify, cognee, st
 
 ## sie.py — Superlinked SIE (all non-agent model calls)
 
-Env: `SIE_API_KEY`, `SIE_BASE_URL`, `SIE_EMBED_MODEL`, `SIE_RERANK_MODEL`, `SIE_EXTRACT_MODEL`, `SIE_LLM_MODEL`,
-`SIE_VLM_MODEL`, `SIE_DOC_MODEL`, optional `SIE_PROVISION_TIMEOUT` (s, default 60).
+Env: `SIE_API_KEY`, `SIE_BASE_URL`, `SIE_EMBED_MODEL`, `SIE_RERANK_MODEL`, `SIE_EXTRACT_MODEL`,
+`SIE_LLM_MODEL` (default `zai-org/GLM-5.3-Flash:relay`), `SIE_DOC_MODEL` (default `docling`),
+`SIE_OCR_MODEL` (default `docling:ocr`), `SIE_VLM_MODEL` (default `lightonai/LightOnOCR-3-4B:markdown`, 2nd OCR try),
+optional `SIE_PROVISION_TIMEOUT` (s, default 60), `SIE_VLM_TIMEOUT` (300), `SIE_LLM_TIMEOUT` (180), `SIE_DOC_MAX_TOKENS` (16384).
+
+Routing (live-verified 2026-11-20, D-008):
+- **LLM** → `chat_completions` on GLM-5.3-Flash relay (~1s warm, supports `json_schema`). It is a reasoning model and the relay
+  rejects `reasoning_effort` / `enable_thinking` / `thinking`, so `max_tokens` is floored at 512 and `<think>` blocks are stripped.
+- **Documents** (PDF/DOCX/CSV) → `extract(docling, Item(document=bytes))` → text (~0.6s) → `llm()` with `json_schema`.
+- **Scans** (png/jpg) → `extract(docling:ocr, Item(images=[bytes]))` (~6s) → if empty/failed, LightOnOCR via `extract` (cold) → `llm()`.
+  (LightOnOCR via `generate()` returns "Generation route is unavailable".)
 
 | Function | Returns |
 |---|---|
 | `available() -> bool` | |
-| `embed(texts: list[str]) -> dict` | `{"vectors": list[list[float]] (L2-normalized), "model": str, "dim": int, "source"}` — fallback: 256-d hashed bag-of-char-trigrams (deterministic, cosine-comparable only with itself) |
-| `rerank(query: str, docs: list[str]) -> dict` | `{"results": [{"index": int, "score": float, "rank": int}] (best first), "model", "source"}` — scores are cross-encoder logits (order matters, not scale); fallback: token-overlap score |
-| `extract_entities(text: str, labels: list[str]) -> dict` | `{"entities": [{"label", "text", "score"}], "model", "source"}` — fallback: regex for `vin`, `dtc`, `bay`, `vehicle` (year make model), `promise_time` |
-| `extract_document(doc: str \| Path \| bytes, output_schema: dict, instruction: str = "", filename: str \| None = None) -> dict` | `{"data": dict (matches output_schema), "model", "method": "doc" \| "csv", "source"}` — PDF/CSV; fallback for CSV: csv reader into `{"lines": [...]}` |
-| `ocr_image(image: str \| Path \| bytes, instruction: str = "Transcribe all text.") -> dict` | `{"text": str, "model", "source"}` — VLM `generate(images=)`; fallback `{"error"}` (+ cache) |
-| `llm(messages: list[{"role","content"}], response_format: dict \| None = None, max_tokens: int = 512) -> dict` | `{"text": str, "json": dict \| None (when response_format given), "model", "source"}` — fallback: `{"error"}` unless cached |
-| `warm() -> dict` | `{model_id: "ok" \| "error: ..."}` — pre-provisions every configured model (seed calls this) |
-| `models() -> dict` | `{"embed","rerank","extract","llm","vlm","doc"}` resolved model ids |
+| `embed(texts: list[str], is_query=None) -> dict` | `{"vectors": list[list[float]] (L2-normalized), "model", "dim", "source"}` — fallback: 256-d hashed trigrams |
+| `rerank(query: str, docs: list[str]) -> dict` | `{"results": [{"index", "score", "rank"}] (best first), "model", "source"}` — fallback: token overlap |
+| `extract_entities(text: str, labels: list[str]) -> dict` | `{"entities": [{"label", "text", "score"}], "model", "source"}` — fallback: regex vin/dtc/bay/vehicle/promise_time |
+| `llm(messages, response_format=None, max_tokens=1024) -> dict` | `{"text", "json" (when response_format), "model", "finish_reason", "source"}` or `{"error"}` |
+| `document_text(doc: path\|bytes, filename=None) -> dict` | `{"text", "model", "source"}` (images routed to `ocr_image`) |
+| `ocr_image(image: path\|bytes, instruction="") -> dict` | `{"text", "model", "source"}` or `{"error"}` |
+| `extract_document(doc, output_schema, instruction="", filename=None) -> dict` | `{"data": dict, "model": "<text>+<llm>", "method": "doc"\|"ocr"\|"csv", "text_chars", "source"}` |
+| `parse_statement(path) -> dict` | `{"statement_date", "vendor_name", "lines": [{date, invoice_no, sku, desc, qty, amount, core_credit}], "total", "model", "method", "source"}` — the `parse_vendor_statement` shape minus `vendor_id` |
+| `warm(provision_timeout_s=600) -> dict` | `{"role:model": "ok 1.2s" \| "error after …"}` |
+| `models() -> dict` | resolved model id per role |
+
+CLI: `uv run python -m tools.integrations.sie warm` · `... sie models` · `... sie statement seed/statements/bayshore_2026-11.pdf`
 
 ## senso.py — shop rules (Senso REST)
 
