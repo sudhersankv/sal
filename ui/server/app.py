@@ -24,6 +24,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from jsonschema import Draft202012Validator
 from sse_starlette.sse import EventSourceResponse
 
+from ui.server import api
+
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = json.loads((ROOT / "contracts/events.schema.json").read_text(encoding="utf-8"))
 VALIDATOR = Draft202012Validator(SCHEMA)
@@ -35,8 +37,37 @@ SIM_URL = os.environ.get("SIM_URL", "http://localhost:8102").rstrip("/")
 
 app = FastAPI(title="Sal UI server")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(api.router)
 
-_events: list[dict] = []
+
+def _mount_chat() -> bool:
+    """Brain's POST /chat router (agent/). Module name not fixed yet; try the likely ones."""
+    import importlib
+    for mod in ("agent.chat_api", "agent.chat", "agent.api", "agent.web"):
+        try:
+            m = importlib.import_module(mod)
+        except Exception:  # noqa: BLE001
+            continue
+        r = getattr(m, "router", None)
+        if r is not None:
+            app.include_router(r)
+            return True
+    return False
+
+
+if not _mount_chat():
+    @app.post("/chat")
+    def chat_offline():
+        return JSONResponse({"offline": True, "reply": "Sal is offline right now."}, status_code=503)
+
+
+@app.on_event("startup")
+def _seed_if_empty() -> None:
+    if os.environ.get("UI_SKIP_SEED") != "1":
+        api.ensure_seeded(background=True)
+
+
+_events: list[dict] = api._live
 _seen: set[str] = set()
 _subscribers: set[asyncio.Queue] = set()
 _logged: dict[Path, set[str]] = {}
