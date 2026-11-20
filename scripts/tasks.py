@@ -56,6 +56,10 @@ def t_bot():
     run(*PY, "-m", "agent.telegram_bot")
 
 
+def t_mcp():
+    run(*PY, "-m", "agent.mcp_public", "--http", "--port", "8103")
+
+
 def t_week():
     run(*PY, "-m", "sim.run", "--week")
 
