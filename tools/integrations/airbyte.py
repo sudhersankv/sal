@@ -50,8 +50,8 @@ def _csv_records(stream: str | None) -> list[dict]:
     return out
 
 
-def _csv_search(query: str, stream: str | None, limit: int) -> list[dict]:
-    recs = _csv_records(stream)
+def _csv_search(query: str, stream: str | None, limit: int, recs: list[dict] | None = None) -> list[dict]:
+    recs = _csv_records(stream) if recs is None else recs
     q = set(_TOK.findall((query or "").lower()))
     if not q or q <= {"all", "list", "everything", "bookings", "booking", "price", "prices", "sheet", "sheets"}:
         return recs[:limit]
@@ -149,4 +149,7 @@ def search_shop_data(query: str, stream: str | None = None, limit: int = 20) -> 
             return out
         except Exception as e:
             log(f"[airbyte] mcp search failed → csv: {safe_exc(e)}")
+    from tools.integrations import airbyte_oss
+    if airbyte_oss.synced():
+        return {"records": _csv_search(query, stream, limit, airbyte_oss.records(stream)), "source": "airbyte-oss"}
     return {"records": _csv_search(query, stream, limit), "source": "csv"}
