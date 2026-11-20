@@ -176,7 +176,7 @@ def run_day(day: str, run_id: str, cli_variant: str | None = None, trigger_text:
     log(f"{day.upper()} {clock.iso()} run={run_id} variant={variant.name} ({variant.source}) strategy={variant.strategy}")
 
     agent_fn, is_stub = get_agent()
-    if trigger["kind"] == "tech_message" and is_stub:  # real Sal emits repair_order.created (actor tech) itself
+    if trigger["kind"] == "tech_message":  # the tech's message; Sal skips logging it when kind=tech_message
         e("repair_order.created", "tech", trigger["text"][:140], sources=[{"name": "Shop", "ref": "bay-tablet"}],
           refs={"ro_id": trigger["ro_id"]}, data={"trigger": trigger, "bay": trigger.get("bay")})
         clock.advance(minutes=1)
@@ -184,7 +184,7 @@ def run_day(day: str, run_id: str, cli_variant: str | None = None, trigger_text:
     os.environ["SAL_SIM_TS"] = clock.iso()
     result: dict = {}
     try:
-        result = _as_dict(agent_fn(day=day, trigger=trigger, variant=variant.arm, run_id=run_id,
+        result = _as_dict(agent_fn(day=day, trigger=trigger, variant=variant.as_dict(), run_id=run_id,
                                    sim_ts=clock.iso()))
     except Exception as ex:  # noqa: BLE001
         traceback.print_exc()
