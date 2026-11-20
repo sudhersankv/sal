@@ -111,7 +111,9 @@ def test_persona_simulated_flow():
 
 
 def test_airbyte_csv_fallback(monkeypatch, tmp_path):
-    from tools.integrations import airbyte
+    from tools.integrations import airbyte, airbyte_oss
+
+    monkeypatch.setattr(airbyte_oss, "OUT", tmp_path / "no-sync")
 
     d = tmp_path / "sheets"
     d.mkdir()
