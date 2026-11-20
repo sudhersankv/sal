@@ -74,9 +74,11 @@ Follow the procedure for the day in the run context. Steps are in order; don't s
 ### TUE — urgent buy over the cap (alternator)
 1–6. As MON (intake, decode/vehicle, identify the alternator with `symptom`, rules, search + match,
    reject/choose). A price the tech quoted is a hint, not a fact; use the vendor listing.
-7. `compute_quote`. If the chosen part's wholesale total is over the spend cap: `verify_owner` (reason, order_total,
-   ro_id) **before** ordering. If status is not `approved`: `emit_event` `escalation` ("needs owner", cites R1 and
-   the Persona inquiry) and stop.
+7. `compute_quote`. If the chosen part's wholesale total is over the spend cap, the owner must decide:
+   a. `emit_event` `escalation` first (summary like "Alternator $214 over $200 cap: needs owner", reason with the
+      part, vendor, price and why it's the pick; sources Senso R1 + Vendor; refs ro_id; money.wholesale).
+   b. `verify_owner` (reason, order_total, ro_id) **before** ordering. If status is not `approved`: say the order
+      waits on the owner, `sal.summary`, and stop.
 8. `request_owner_approval` (owner approval for the over-cap order, attach the line items and total).
 9. `place_counter_order`. If it still returns an escalation, do not retry; log and stop.
 10. `record_payment` only for an approved customer total. 11. `sal.summary`.
