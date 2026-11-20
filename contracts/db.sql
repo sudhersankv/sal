@@ -7,7 +7,7 @@ CREATE TABLE fitments (part_id VARCHAR(48), year INT, make VARCHAR(32), model VA
   engine_l DECIMAL(3,1), dtc VARCHAR(8), notes TEXT, KEY(make, model, year));
 CREATE TABLE vendor_catalog (vendor_id VARCHAR(32), sku VARCHAR(64), vendor_part_no VARCHAR(64),
   oem_part_no VARCHAR(64), brand VARCHAR(48), description TEXT, price DECIMAL(10,2),
-  qty_on_hand INT, eta_minutes INT, shopify_variant_id VARCHAR(64), embedding VECTOR(1024),
+  qty_on_hand INT, eta_minutes INT, shopify_variant_id VARCHAR(64), embedding VECTOR(2560),
   PRIMARY KEY(vendor_id, sku));
 CREATE TABLE inventory (sku VARCHAR(64) PRIMARY KEY, name TEXT, part_type VARCHAR(48), qty INT, min_qty INT, max_qty INT);
 CREATE TABLE bookings (booking_id VARCHAR(32) PRIMARY KEY, date DATE, service_code VARCHAR(32),
