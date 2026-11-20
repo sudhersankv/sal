@@ -163,11 +163,11 @@ class Bot:
             self.busy.pop(chat_id, None)
 
     def post_event(self, chat_id: int, ev: dict, ro: str) -> None:
-        typ, data, refs = ev.get("type"), ev.get("data") or {}, ev.get("refs") or {}
+        typ, refs = ev.get("type"), ev.get("refs") or {}
         line = format_event(ev)
         if not line:
             return
-        if typ == "escalation" or (typ == "identity.verified" and data.get("status") == "pending"):
+        if typ == "escalation" or needs_owner_identity(ev):
             url = hosted_url(ev)
             if url:
                 line += f"\nVerify owner (Persona): {url}"
@@ -205,7 +205,7 @@ def format_event(ev: dict) -> str | None:
     if typ == "escalation":
         reason = ev.get("reason") or ""
         return f"NEEDS OWNER: {s}" + (f"\n{reason}" if reason and reason != s else "")
-    if typ == "identity.verified" and data.get("status") == "pending":
+    if needs_owner_identity(ev):
         return f"Owner ID check pending: {s}"
     if typ == "sal.summary":
         out = ev.get("reason") or s
@@ -214,6 +214,14 @@ def format_event(ev: dict) -> str | None:
                 f", retail ${money['retail']:.2f}" if money.get("retail") is not None else "")
         return out
     return None
+
+
+def needs_owner_identity(ev: dict) -> bool:
+    """verify_owner left pending: tools emit approval.requested with a Persona source."""
+    if ev.get("type") == "identity.verified":
+        return (ev.get("data") or {}).get("status") == "pending"
+    return ev.get("type") == "approval.requested" and any(
+        s.get("name") == "Persona" for s in ev.get("sources") or [])
 
 
 def short_time(ts: str) -> str:
@@ -244,9 +252,10 @@ def approval_kind(ev: dict, ap_id: str) -> str:
                 return p["kind"]
     except Exception:  # noqa: BLE001
         pass
-    if ev.get("type") == "identity.verified" or hosted_url(ev):
+    refs = ev.get("refs") or {}
+    if ev.get("type") in ("identity.verified", "approval.requested") or hosted_url(ev):
         return "identity"
-    if (ev.get("refs") or {}).get("rule_id"):
+    if refs.get("rule_id") and not refs.get("ro_id") and ev.get("type") == "rule.proposed":
         return "rule"
     return "order"
 
