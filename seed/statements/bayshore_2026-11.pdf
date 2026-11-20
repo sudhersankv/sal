@@ -1,0 +1,73 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 3383 >>
+stream
+BT
+/F1 7.5 Tf
+9 TL
+30 580 Td
+(BAYSHORE PARTS CO.) '
+(1450 Bayshore Blvd, San Francisco CA \(fictional\)) '
+(STATEMENT OF ACCOUNT) '
+(Account: MISSION STREET AUTO  #MSA-2231) '
+(Statement date: 2026-11-15   Period: 2026-10-16 to 2026-11-15) '
+(Terms: Net 30. Core credits for returned cores are applied on this statement.) '
+() '
+(DATE       INVOICE    SKU        DESCRIPTION                                   QTY    AMOUNT  CORE CR) '
+(2026-10-16 BSI-104468 BSP101887  MOTORCRAFT BRF-1586 BRAKE PADS, FRONT           1     42.42     0.00) '
+(2026-10-16 BSI-104481 BSP106438  NTK 24134 O2 SENSOR, DOWNSTREAM                 1     40.14     0.00) '
+(2026-10-16 BSI-104494 BSP102516  WAGNER ZD2076 BRAKE PADS, FRONT                 1     37.61     0.00) '
+(2026-10-19 BSI-104507 BSP103626  DENSO 673-4028 IGNITION COIL                    1     49.76     0.00) '
+(2026-10-20 BSI-104520 BSP105476  WAGNER QC1089A BRAKE PADS, FRONT                1     36.50     0.00) '
+(2026-10-20 BSI-104533 BSP101887  MOTORCRAFT BRF-1586 BRAKE PADS, FRONT           1     40.12     0.00) '
+(2026-10-22 BSI-104546 BSP100518  WAGNER BD126030E BRAKE ROTOR, FRONT             1     48.80     0.00) '
+(2026-10-22 BSI-104559 BSP101591  MOTORCRAFT CK4Z-11002-C STARTER                 1    212.29     0.00) '
+(2026-10-26 BSI-104572 BSP100518  WAGNER BD126030E BRAKE ROTOR, FRONT             1     48.76     0.00) '
+(2026-10-26 BSI-104585 BSP104588  GATES K060714 SERPENTINE BELT                   1     32.10     0.00) '
+(2026-10-27 BSI-104598 BSP106438  NTK 24134 O2 SENSOR, DOWNSTREAM                 1     39.10     0.00) '
+(2026-10-29 BSI-104611 BSP100518  WAGNER BD126030E BRAKE ROTOR, FRONT             1     49.10     0.00) '
+(2026-10-29 BSI-104624 BSP105069  ACDELCO 45A1430 TIE ROD END, FRONT OUTER        1     34.84     0.00) '
+(2026-10-29 BSI-104637 BSP104847  WAGNER TQM24046 BRAKE CALIPER, FRONT LEFT       1     76.85    20.00) '
+(2026-10-31 BSI-104650 BSP104588  GATES K060714 SERPENTINE BELT                   1     33.29     0.00) '
+(2026-11-02 BSI-104663 BSP103774  WAGNER QC1650 BRAKE PADS, FRONT                 1     38.28     0.00) '
+(2026-11-03 BSI-104676 BSP104218  ACDELCO 84143543 ALTERNATOR                     1    264.29     0.00) '
+(2026-11-03 BSI-104689 BSP102109  GATES K060930 SERPENTINE BELT                   1     33.06     0.00) '
+(2026-11-06 BSI-104702 BSP102109  GATES K060930 SERPENTINE BELT                   1     31.13     0.00) '
+(2026-11-06 BSI-104715 BSP101887  MOTORCRAFT BRF-1586 BRAKE PADS, FRONT           1     41.84     0.00) '
+(2026-11-10 BSI-104728 BSP105069  ACDELCO 45A1430 TIE ROD END, FRONT OUTER        1     36.15     0.00) '
+(2026-11-11 BSI-104741 BSP103367  REMY 16198 STARTER                              1    186.83    40.00) '
+(2026-11-11 BSI-104754 BSP104588  GATES K060714 SERPENTINE BELT                   1     33.00     0.00) '
+(2026-11-12 BSI-104767 BSP105069  ACDELCO 45A1430 TIE ROD END, FRONT OUTER        1     34.72     0.00) '
+(2026-11-13 BSI-104780 BSP104588  GATES K060714 SERPENTINE BELT                   1     33.32     0.00) '
+() '
+(                                                                           Charges   1554.30) '
+(                                                                      Core credits    -60.00) '
+(                                                                       BALANCE DUE   1494.30) '
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000003676 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+3744
+%%EOF
